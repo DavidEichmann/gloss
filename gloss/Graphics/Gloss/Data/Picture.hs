@@ -25,11 +25,19 @@ module Graphics.Gloss.Data.Picture
         , rectangleSolid
         , rectangleUpperPath
         , rectangleUpperWire
-        , rectangleUpperSolid)
+        , rectangleUpperSolid
+
+        , isPointInTriangle)
 where
 import Graphics.Gloss.Rendering
 import Graphics.Gloss.Geometry.Angle
+import Data.List
 
+import Control.Monad.ST
+import Data.STRef
+import Control.Monad.Fix
+
+import Debug.Trace
 
 -- Constructors ----------------------------------------------------------------
 -- NOTE: The docs here should be identical to the ones on the constructors.
@@ -40,7 +48,7 @@ blank   = Blank
 
 -- | A convex polygon filled with a solid color.
 polygon :: Path -> Picture
-polygon = Polygon
+polygon = generalPolygon
 
 -- | A line along an arbitrary path.
 line :: Path -> Picture
@@ -185,3 +193,142 @@ rectangleUpperSolid :: Float -> Float -> Picture
 rectangleUpperSolid sizeX sizeY
         = Polygon  $ rectangleUpperPath sizeX sizeY
 
+-- | Convert a non self intersecting (possibly concave) polygon into a Picture
+generalPolygon :: Path -> Picture
+generalPolygon points = Pictures triangles where
+
+    triangles :: [Picture]
+    triangles = map Polygon (triangulation points)
+
+    -- This is a super inefficient implementations
+    triangulation :: [Point] -> [[Point]]
+    triangulation path | length path < 3 = []
+    triangulation path = case cutEar path of
+        Nothing               -> [path]
+        Just (ear, newPoints) -> ear : triangulation newPoints
+
+    cutEar :: [Point] -> Maybe ([Point], [Point])
+    cutEar path | n >= 3 = do -- Maybe
+        (ear@[a,b,c], rest) <- find (uncurry isEar) candidateEarsAndRest
+        return $ (ear, a:c:rest)
+        where
+            n = length path
+            candidateEarsAndRest = take n . map (splitAt 3 . take n) . tails . cycle $ path
+            isEar [a@(ax,ay),b@(bx,by),c@(cx,cy)] rest' = (winding * polygonWinding > 0) && (not $ any ((flip isPointInTriangle) (a,b,c)) rest')
+                where
+                    (a2bx, a2by) = (bx - ax, by - ay)
+                    (b2cx, b2cy) = (cx - bx, cy - by)
+                    winding = (b2cx * a2by) - (b2cy * a2bx)
+
+    cutEar _ = Nothing
+
+    {-}
+    triangulation :: [Path]
+    triangulation = runST $ do
+        let startSize = length points
+        ringRef         <- newSTRef =<< toRing points
+        numToCheckRef   <- newSTRef (startSize - 2)
+        sizeRef         <- newSTRef startSize
+        earsRef         <- newSTRef []
+
+        -- Keep traveling around the ring, looking for ears to cut until numToCheckRef == 0
+        let
+            cutEar = do
+                -- Get the previous current and neighboring vertexes.
+                Vertex prevV point nextV <- readSTRef ringRef
+                Vertex prevPrevV prevPoint prevNextV <- readSTRef prevV
+                Vertex nextPrevV nextPoint nextNextV <- readSTRef nextV
+
+                -- update the neighboring vertices to point to eachother.
+                writeSTRef (Vertex prevPrevV prevPoint nextV) prevV
+                writeSTRef (Vertex prevV nextPoint nextNextV) nextV
+
+                -- move to the previouse vertex which now needs to be rechecked.
+                writeSTRef ringRef prevV
+                modifySTRef (+1) numToCheckRef
+                modifySTRef (-1) sizeRef
+
+                -- Add the ear
+                modifySTRef ((prevPoint, point, nextPoint):) earsRef
+                return ()
+
+            checkIsEar = do
+                (ear, rest) <- currentCandidataEarAndRest
+                return $ not $ any (`isPointInTriangle` ear) rest
+
+            currentCandidataEarAndRest = do
+                Vertex prevV _ _ <- readSTRef ringRef
+                [a,b,c] <- take prevV 3
+                _:_:_:rest <- prevV =<< readSTRef sizeRef
+                return ((a,b,c), rest)
+
+            takePoints current n = do
+                Vertex _ point nextV <- readSTRef current
+                rest <- takePoints nextV (n-1)
+                return $ point : rest
+
+            moveNext = do
+                -- Get the previous current and neighboring vertexes.
+                Vertex _ _ nextV <- readSTRef ringRef
+                writeSTRef ringRef nextV
+
+            simpleTriangulation = do
+                pointsLeft <- readSTRef sizeRef
+                sequence_ $ replicate (pointsLeft - 2) cutEar
+
+            traverse = do
+                numToCheck <- numToCheckRef
+                if numToCheck == 0
+                    then simpleTriangulation
+                    else do
+                        isEar <- checkIsEar
+                        modifySTRef (-1) numToCheckRef
+                        if isEar
+                            then cutEar
+                            else moveNext
+                        traverse
+
+        traverse
+        readSTRef earsRef
+        -}
+
+
+    -- | The sign of this value indicates CW or CCW winding if positive or negative respectivelly.
+    polygonWinding :: Float
+    polygonWinding = sum [(ay + by) * (bx - ax) | ((ax, ay), (bx, by)) <- edges]
+
+    edges :: [(Point, Point)]
+    edges = zip points (tail cycledPoints)
+
+    -- corners :: [(Point, Point, Point)]
+    -- corners = zip3 points (drop 1 cycledPoints) (drop 2 cycledPoints)
+
+    cycledPoints :: Path
+    cycledPoints = cycle points
+
+isPointInTriangle :: Point -> (Point, Point, Point) -> Bool
+isPointInTriangle p t = let (ba,bb,bc) = toBarycentric p t in 0 < ba && ba < 1 && 0 < bb && bb < 1 && 0 < bc && bc < 1
+
+toBarycentric :: Point -> (Point, Point, Point) -> (Float, Float, Float)
+toBarycentric (x, y) ((x1,y1),(x2,y2),(x3,y3)) = (ba, bb, bc) where
+
+    ba = (((y2-y3)*(xx3)) + ((x3-x2)*(yy3))) / denom
+    bb = (((y3-y1)*(xx3)) + ((x1-x3)*(yy3))) / denom
+    bc = 1 - ba - bb
+
+    xx3 = x - x3
+    yy3 = y - y3
+    denom = (((y2-y3)*(x1-x3)) + ((x3-x2)*(y1-y3)))
+
+{-}
+data Ring s = Vertex
+                (STRef s (Ring s))   -- ^ Previous vertex.
+                Point           -- ^ Current point.
+                (STRef s (Ring s))   -- ^ Next vertex.
+
+toRing :: [Point] -> ST s (Ring s)
+toRing points = mfix recMakeVertices where
+    recMakeVertices vertexes = mapM newSTRef (zipWith3 Vertex rotBack points rotForward) where
+        rotBack     = last vertexes : vertexes
+        rotForward  = tail $ cycle vertexes
+-}
