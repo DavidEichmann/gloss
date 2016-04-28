@@ -296,7 +296,7 @@ idle_func (void)
 void
 open_glut_window (void)
 {
-        glutInitDisplayMode ( GLUT_RGBA | GLUT_DOUBLE );
+        glutInitDisplayMode ( GLUT_RGBA | GLUT_DOUBLE | GLUT_STENCIL );
 
         glutInitWindowPosition (20, 10);
         glutInitWindowSize (state_window_width, state_window_height);

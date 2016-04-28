@@ -90,6 +90,60 @@ drawPicture state circScale picture
                 GL.blend        $= GL.Disabled
                 GL.preservingMatrix $ GLUT.renderString GLUT.Roman str
                 GL.blend        $= GL.Enabled
+             
+        -- Stencil -------------------------------
+        Stencil path p
+         -> do
+                -- | If smaller than a pixel, then don't render
+                let
+                    minX = minimum . map fst $ path
+                    maxX = maximum . map fst $ path
+                    minY = minimum . map snd $ path
+                    maxY = maximum . map snd $ path
+                    maxExtent = circScale * (max (maxX - minX) (maxY - minY))
+
+                -- | TODO also check if the stencil is out of the screen.
+                -- | TODO have a maximum depth?
+
+                if maxExtent < 1
+                    then return ()
+                    else do
+                        -- | Enable the stencil buffer
+                        GL.stencilTest  $= GL.Enabled
+                        
+                        -- | Start editing the stencil buffer (never write into the color buffer)
+                        GL.stencilFunc  $= (GL.Always, 1, 0xFF)
+                        GL.stencilOp    $= (GL.OpKeep, GL.OpKeep, GL.OpReplace)
+                        GL.stencilMask  $= 0xFF
+                        GL.depthMask    $= GL.Disabled
+                        GL.colorMask    $= GL.Color4 GL.Disabled GL.Disabled GL.Disabled GL.Disabled
+                        GL.clear        [GL.StencilBuffer]
+
+                        -- | Draw the stencil path into the stencil buffer
+                        drawPicture state circScale (Polygon path)
+
+                        -- | Stop editing the stencil buffer
+                        GL.stencilFunc  $= (GL.Equal, 1, 0xFF)
+                        GL.stencilMask  $= 0x00
+                        GL.depthMask    $= GL.Enabled
+                        GL.colorMask    $= GL.Color4 GL.Enabled GL.Enabled GL.Enabled GL.Enabled
+
+
+                        -- TODO: What about when p recursivelly contains a Stencil!?!??!?!? possible solution is to store the stack of stencils in the state and reset the stencil from that.
+
+                        -- | Clear the color buffer under the stencil.
+                        currentColor <- get GL.currentColor
+                        bgC          <- get GL.clearColor
+                        GL.currentColor  $= bgC
+                        drawPicture state circScale (Polygon path)
+                        GL.currentColor  $= currentColor
+
+                        -- | Draw the picture into the stencil.
+                        drawPicture state circScale p
+
+                        -- Disable the stencil buffer.
+                        GL.stencilTest  $= GL.Disabled
+
 
         -- colors with float components.
         Color col p
@@ -100,7 +154,7 @@ drawPicture state circScale picture
 
                 GL.currentColor  $= GL.Color4 (gf r) (gf g) (gf b) (gf a)
                 drawPicture state circScale p
-                GL.currentColor  $= oldColor            
+                GL.currentColor  $= oldColor
 
          |  otherwise
          ->     drawPicture state circScale p
@@ -159,7 +213,7 @@ drawPicture state circScale picture
           $ do  GL.scale (gf sx) (gf sy) 1
                 let mscale      = max sx sy
                 drawPicture state (circScale * mscale) p
-                        
+
         -- Bitmap -------------------------------
         Bitmap width height imgData cacheMe
          -> do  

@@ -54,7 +54,12 @@ data Texture
         , texObject     :: GL.TextureObject
 
         -- | Whether we want to leave this in OpenGL texture memory between frames.
-        , texCacheMe    :: Bool }
+        , texCacheMe    :: Bool
+
+        -- | Stencil polygons
+        -- TODO , stencilPolygons :: [Path] -- needed for recursive stencils
+
+         }
 
 
 -- | A mutable render state holds references to the textures currently loaded

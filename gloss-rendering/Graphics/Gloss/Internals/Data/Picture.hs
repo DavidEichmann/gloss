@@ -91,6 +91,9 @@ data Picture
         -- | Some text to draw with a vector font.
         | Text          String
 
+        -- | A stenciled picture
+        | Stencil       Path    Picture
+
         -- | A bitmap image with a width, height and some 32-bit RGBA
         --   bitmap data.
         --

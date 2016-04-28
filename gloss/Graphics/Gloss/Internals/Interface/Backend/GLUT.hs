@@ -91,7 +91,8 @@ initializeGLUT _ debug
 
         GLUT.initialDisplayMode
           $= [ GLUT.RGBMode
-             , GLUT.DoubleBuffered]
+             , GLUT.DoubleBuffered
+             , GLUT.WithStencilBuffer]
 
         -- See if our requested display mode is possible
         displayMode         <- get GLUT.initialDisplayMode

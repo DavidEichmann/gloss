@@ -1,0 +1,4 @@
+gloss-rendering/dist/
+gloss/.cabal-sandbox/
+gloss/cabal.sandbox.config
+gloss/dist/
