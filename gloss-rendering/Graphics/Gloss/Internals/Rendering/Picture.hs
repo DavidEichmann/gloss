@@ -59,7 +59,7 @@ drawPicture state circScale picture
 
 
         -- polygon (where?)
-        Polygon path
+        PolygonConvex path
          | stateWireframe state
          -> GL.renderPrimitive GL.LineLoop
                 $ vertexPFs path
@@ -67,6 +67,14 @@ drawPicture state circScale picture
          | otherwise
          -> GL.renderPrimitive GL.Polygon
                 $ vertexPFs path
+
+        Polygon path
+         | stateWireframe state
+         -> GL.renderPrimitive GL.LineLoop
+                $ vertexPFs path
+                
+         | otherwise
+         -> mapM_ (drawPicture state circScale . PolygonConvex) (generalPolygon path)
 
         -- circle
         Circle radius
@@ -417,3 +425,60 @@ vertexPFs ((x, y) : rest)
         vertexPFs rest
 {-# INLINE vertexPFs #-}
 
+
+
+
+
+-- | Convert a non self intersecting (possibly concave) polygon into a Picture
+generalPolygon :: Path -> [Path]
+generalPolygon points = triangulation points where
+
+    -- This is a super inefficient implementations
+    triangulation :: [Point] -> [Path]
+    triangulation path | length path < 3 = []
+    triangulation path = case cutEar path of
+        Nothing               -> [path]
+        Just (ear, newPoints) -> ear : triangulation newPoints
+
+    cutEar :: [Point] -> Maybe ([Point], [Point])
+    cutEar path | n >= 3 = do -- Maybe
+        (ear@[a,b,c], rest) <- find (uncurry isEar) candidateEarsAndRest
+        return $ (ear, a:c:rest)
+        where
+            n = length path
+            candidateEarsAndRest = take n . map (splitAt 3 . take n) . tails . cycle $ path
+            isEar [a@(ax,ay),b@(bx,by),c@(cx,cy)] rest' = (winding * polygonWinding > 0) && (not $ any ((flip isPointInTriangle) (a,b,c)) rest')
+                where
+                    (a2bx, a2by) = (bx - ax, by - ay)
+                    (b2cx, b2cy) = (cx - bx, cy - by)
+                    winding = (b2cx * a2by) - (b2cy * a2bx)
+
+    cutEar _ = Nothing
+
+
+    -- | The sign of this value indicates CW or CCW winding if positive or negative respectivelly.
+    polygonWinding :: Float
+    polygonWinding = sum [(ay + by) * (bx - ax) | ((ax, ay), (bx, by)) <- edges]
+
+    edges :: [(Point, Point)]
+    edges = zip points (tail cycledPoints)
+
+    -- corners :: [(Point, Point, Point)]
+    -- corners = zip3 points (drop 1 cycledPoints) (drop 2 cycledPoints)
+
+    cycledPoints :: Path
+    cycledPoints = cycle points
+
+isPointInTriangle :: Point -> (Point, Point, Point) -> Bool
+isPointInTriangle p t = let (ba,bb,bc) = toBarycentric p t in 0 < ba && ba < 1 && 0 < bb && bb < 1 && 0 < bc && bc < 1
+
+toBarycentric :: Point -> (Point, Point, Point) -> (Float, Float, Float)
+toBarycentric (x, y) ((x1,y1),(x2,y2),(x3,y3)) = (ba, bb, bc) where
+
+    ba = (((y2-y3)*(xx3)) + ((x3-x2)*(yy3))) / denom
+    bb = (((y3-y1)*(xx3)) + ((x1-x3)*(yy3))) / denom
+    bc = 1 - ba - bb
+
+    xx3 = x - x3
+    yy3 = y - y3
+    denom = (((y2-y3)*(x1-x3)) + ((x3-x2)*(y1-y3)))

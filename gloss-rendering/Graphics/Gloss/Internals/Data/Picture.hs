@@ -66,8 +66,11 @@ data Picture
         -- | A blank picture, with nothing in it.
         = Blank
 
-        -- | A convex polygon filled with a solid color.
+        -- | A polygon filled with a solid color.
         | Polygon       Path
+
+        -- | A convex polygon filled with a solid color.
+        | PolygonConvex Path
         
         -- | A line along an arbitrary path.
         | Line          Path
