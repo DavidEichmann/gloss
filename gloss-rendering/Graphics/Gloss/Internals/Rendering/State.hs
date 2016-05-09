@@ -12,6 +12,7 @@ import System.Mem.StableName
 import Data.Word
 import Data.IORef
 import qualified Graphics.Rendering.OpenGL.GL   as GL
+import Linear
 
 
 -- | Abstract Gloss render state which holds references to textures
@@ -32,6 +33,9 @@ data State
         
         -- | Cache of Textures that we've sent to OpenGL.
         , stateTextures         :: !(IORef [Texture])
+
+        -- | Active modeling matrix
+        , stateModelingMatrix   :: M33 Float
         }
         
 
@@ -56,9 +60,6 @@ data Texture
         -- | Whether we want to leave this in OpenGL texture memory between frames.
         , texCacheMe    :: Bool
 
-        -- | Stencil polygons
-        -- TODO , stencilPolygons :: [Path] -- needed for recursive stencils
-
          }
 
 
@@ -73,5 +74,6 @@ initState
                 , stateWireframe        = False
                 , stateBlendAlpha       = True
                 , stateLineSmooth       = False 
-                , stateTextures         = textures }
+                , stateTextures         = textures
+                , stateModelingMatrix   = identity }
         

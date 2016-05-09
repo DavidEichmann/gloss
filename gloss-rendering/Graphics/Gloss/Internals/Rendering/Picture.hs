@@ -18,6 +18,7 @@ import Graphics.Rendering.OpenGL                        (($=), get)
 import qualified Graphics.Rendering.OpenGL.GL           as GL
 import qualified Graphics.Rendering.OpenGL.GLU.Errors   as GLU
 import qualified Graphics.UI.GLUT                       as GLUT
+import Linear
 
 
 -- | Render a picture into the current OpenGL context.
@@ -44,7 +45,7 @@ renderPicture state circScale picture
 
 
 drawPicture :: State -> Float -> Picture -> IO ()         
-drawPicture state circScale picture
+drawPicture (state@State{stateModelingMatrix=modelingMatrix}) circScale picture
  = {-# SCC "drawComponent" #-}
    case picture of
 
@@ -55,23 +56,23 @@ drawPicture state circScale picture
         -- line
         Line path       
          -> GL.renderPrimitive GL.LineStrip 
-                $ vertexPFs path
+                $ vertexPFs state path
 
 
         -- polygon (where?)
         PolygonConvex path
          | stateWireframe state
          -> GL.renderPrimitive GL.LineLoop
-                $ vertexPFs path
+                $ vertexPFs state path
                 
          | otherwise
          -> GL.renderPrimitive GL.Polygon
-                $ vertexPFs path
+                $ vertexPFs state path
 
         Polygon path
          | stateWireframe state
          -> GL.renderPrimitive GL.LineLoop
-                $ vertexPFs path
+                $ vertexPFs state path
                 
          | otherwise
          -> mapM_ (drawPicture state circScale . PolygonConvex) (generalPolygon path)
@@ -101,6 +102,10 @@ drawPicture state circScale picture
              
         -- Stencil -------------------------------
         Stencil path p
+         | length (take 3 path) < 3
+         -> return ()
+         
+         | otherwise
          -> do
                 -- | If smaller than a pixel, then don't render
                 let
@@ -170,57 +175,71 @@ drawPicture state circScale picture
 
         -- Translation --------------------------
         -- Easy translations are done directly to avoid calling GL.perserveMatrix.
-        Translate posX posY (Circle radius)
-         -> renderCircle posX posY circScale radius 0
+        -- Translate posX posY (Circle radius)
+        --  -> renderCircle posX posY circScale radius 0
 
-        Translate posX posY (ThickCircle radius thickness)
-         -> renderCircle posX posY circScale radius thickness
+        -- Translate posX posY (ThickCircle radius thickness)
+        --  -> renderCircle posX posY circScale radius thickness
 
-        Translate posX posY (Arc a1 a2 radius)
-         -> renderArc posX posY circScale radius a1 a2 0
+        -- Translate posX posY (Arc a1 a2 radius)
+        --  -> renderArc posX posY circScale radius a1 a2 0
 
-        Translate posX posY (ThickArc a1 a2 radius thickness)
-         -> renderArc posX posY circScale radius a1 a2 thickness
+        -- Translate posX posY (ThickArc a1 a2 radius thickness)
+        --  -> renderArc posX posY circScale radius a1 a2 thickness
              
-        Translate tx ty (Rotate deg p)
-         -> GL.preservingMatrix
-          $ do  GL.translate (GL.Vector3 (gf tx) (gf ty) 0)
-                GL.rotate    (gf deg) (GL.Vector3 0 0 (-1))
-                drawPicture state circScale p
+        -- Translate tx ty (Rotate deg p)
+        --  -> GL.preservingMatrix
+        --   $ do  GL.translate (GL.Vector3 (gf tx) (gf ty) 0)
+        --         GL.rotate    (gf deg) (GL.Vector3 0 0 (-1))
+        --         drawPicture state circScale p
 
         Translate tx ty p
-         -> GL.preservingMatrix
-          $ do  GL.translate (GL.Vector3 (gf tx) (gf ty) 0)
-                drawPicture state circScale p
+         -- -> GL.preservingMatrix
+         --  $ do  GL.translate (GL.Vector3 (gf tx) (gf ty) 0)
+         --        drawPicture state circScale p
+         -> drawPicture state{stateModelingMatrix = modelingMatrix !*! newMatrix} circScale p
+          where
+            newMatrix = V3
+              (V3 1 0 tx)
+              (V3 0 1 ty)
+              (V3 0 0 1)
 
 
         -- Rotation -----------------------------
         -- Easy rotations are done directly to avoid calling GL.perserveMatrix.
-        Rotate _   (Circle radius)
-         -> renderCircle   0 0 circScale radius 0
+        -- Rotate _   (Circle radius)
+        --  -> renderCircle   0 0 circScale radius 0
 
-        Rotate _   (ThickCircle radius thickness)
-         -> renderCircle   0 0 circScale radius thickness
+        -- Rotate _   (ThickCircle radius thickness)
+        --  -> renderCircle   0 0 circScale radius thickness
 
-        Rotate deg (Arc a1 a2 radius)
-         -> renderArc      0 0 circScale radius (a1-deg) (a2-deg) 0
+        -- Rotate deg (Arc a1 a2 radius)
+        --  -> renderArc      0 0 circScale radius (a1-deg) (a2-deg) 0
 
-        Rotate deg (ThickArc a1 a2 radius thickness)
-         -> renderArc      0 0 circScale radius (a1-deg) (a2-deg) thickness
+        -- Rotate deg (ThickArc a1 a2 radius thickness)
+        --  -> renderArc      0 0 circScale radius (a1-deg) (a2-deg) thickness
 
         
         Rotate deg p
-         -> GL.preservingMatrix
-          $ do  GL.rotate (gf deg) (GL.Vector3 0 0 (-1))
-                drawPicture state circScale p
+         -> drawPicture state{stateModelingMatrix = modelingMatrix !*! newMatrix} circScale p
+          where
+            ccwRad = negate (deg * pi / 180)
+            s = sin ccwRad
+            c = cos ccwRad
+            newMatrix = V3
+              (V3 c (-s) 0)
+              (V3 s   c  0)
+              (V3 0   0  1)
 
 
         -- Scale --------------------------------
         Scale sx sy p
-         -> GL.preservingMatrix
-          $ do  GL.scale (gf sx) (gf sy) 1
-                let mscale      = max sx sy
-                drawPicture state (circScale * mscale) p
+         -> drawPicture state{stateModelingMatrix = modelingMatrix !*! newMatrix} circScale p
+          where
+            newMatrix = V3
+              (V3 sx  0  0)
+              (V3 0  sy  0)
+              (V3 0   0  1)
 
         -- Bitmap -------------------------------
         Bitmap width height imgData cacheMe
@@ -255,7 +274,7 @@ drawPicture state circScale picture
                  $ zipWithM_
                         (\(pX, pY) (tX, tY)
                           -> do GL.texCoord $ GL.TexCoord2 (gf tX) (gf tY)
-                                GL.vertex   $ GL.Vertex2   (gf pX) (gf pY))
+                                vertexPFs state [(pX, pY)])
 
                         (bitmapPath (fromIntegral width) (fromIntegral height))
                                 rowInfo
@@ -418,11 +437,10 @@ setLineSmooth state
         | otherwise     = GL.lineSmooth $= GL.Disabled
 
 
-vertexPFs ::    [(Float, Float)] -> IO ()
-vertexPFs []    = return ()
-vertexPFs ((x, y) : rest)
- = do   GL.vertex $ GL.Vertex2 (gf x) (gf y)
-        vertexPFs rest
+vertexPFs :: State -> [(Float, Float)] -> IO ()
+vertexPFs _ [] = return ()
+vertexPFs State{stateModelingMatrix=m} ps
+ = mapM_ (\(V3 x y w) -> GL.vertex $ GL.Vertex2 (gf (x / w)) (gf (y / w))) (map (\(x, y) -> m !* (V3 x y 1)) ps)
 {-# INLINE vertexPFs #-}
 
 
