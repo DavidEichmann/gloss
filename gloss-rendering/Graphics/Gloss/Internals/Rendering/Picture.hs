@@ -45,7 +45,7 @@ renderPicture state circScale picture
 
 
 drawPicture :: State -> Float -> Picture -> IO ()         
-drawPicture (state@State{stateModelingMatrix=modelingMatrix}) circScale picture
+drawPicture (state@State{stateModelingMatrix=modelingMatrix, stateStencils=sp}) circScale picture
  = {-# SCC "drawComponent" #-}
    case picture of
 
@@ -115,34 +115,39 @@ drawPicture (state@State{stateModelingMatrix=modelingMatrix}) circScale picture
                     maxY = maximum . map snd $ path
                     maxExtent = circScale * (max (maxX - minX) (maxY - minY))
 
+                    loadStencil :: [Path] -> IO ()
+                    loadStencil [] = do
+                            GL.stencilTest  $= GL.Disabled
+                            GL.clear [GL.StencilBuffer]
+                    loadStencil stencilToLoad = do
+                            GL.stencilTest  $= GL.Enabled
+                            
+                            -- | Start editing the stencil buffer (never write into the color buffer)
+                            GL.stencilFunc  $= (GL.Always, 1, 0xFF)
+                            GL.stencilOp    $= (GL.OpKeep, GL.OpKeep, GL.OpIncr)
+                            GL.stencilMask  $= 0xFF
+                            GL.depthMask    $= GL.Disabled
+                            GL.colorMask    $= GL.Color4 GL.Disabled GL.Disabled GL.Disabled GL.Disabled
+                            GL.clear        [GL.StencilBuffer]
+
+                            -- | Draw the stencil path into the stencil buffer
+                            mapM_ (\stencilPolygon -> drawPicture state circScale (Polygon stencilPolygon)) stencilToLoad
+
+                            -- | Stop editing the stencil buffer
+                            GL.stencilFunc  $= (GL.Equal, fromIntegral $ length stencilToLoad, 0xFF)
+                            GL.stencilMask  $= 0x00
+                            GL.depthMask    $= GL.Enabled
+                            GL.colorMask    $= GL.Color4 GL.Enabled GL.Enabled GL.Enabled GL.Enabled
+
                 -- | TODO also check if the stencil is out of the screen.
                 -- | TODO have a maximum depth?
 
-                if maxExtent < 1
+                if False || maxExtent < 1
                     then return ()
                     else do
-                        -- | Enable the stencil buffer
-                        GL.stencilTest  $= GL.Enabled
-                        
-                        -- | Start editing the stencil buffer (never write into the color buffer)
-                        GL.stencilFunc  $= (GL.Always, 1, 0xFF)
-                        GL.stencilOp    $= (GL.OpKeep, GL.OpKeep, GL.OpReplace)
-                        GL.stencilMask  $= 0xFF
-                        GL.depthMask    $= GL.Disabled
-                        GL.colorMask    $= GL.Color4 GL.Disabled GL.Disabled GL.Disabled GL.Disabled
-                        GL.clear        [GL.StencilBuffer]
 
-                        -- | Draw the stencil path into the stencil buffer
-                        drawPicture state circScale (Polygon path)
-
-                        -- | Stop editing the stencil buffer
-                        GL.stencilFunc  $= (GL.Equal, 1, 0xFF)
-                        GL.stencilMask  $= 0x00
-                        GL.depthMask    $= GL.Enabled
-                        GL.colorMask    $= GL.Color4 GL.Enabled GL.Enabled GL.Enabled GL.Enabled
-
-
-                        -- TODO: What about when p recursivelly contains a Stencil!?!??!?!? possible solution is to store the stack of stencils in the state and reset the stencil from that.
+                        -- | Load new stencil
+                        loadStencil (path : sp)
 
                         -- | Clear the color buffer under the stencil.
                         currentColor <- get GL.currentColor
@@ -152,11 +157,10 @@ drawPicture (state@State{stateModelingMatrix=modelingMatrix}) circScale picture
                         GL.currentColor  $= currentColor
 
                         -- | Draw the picture into the stencil.
-                        drawPicture state circScale p
+                        drawPicture state{stateStencils=path:sp} circScale p
 
-                        -- Disable the stencil buffer.
-                        GL.stencilTest  $= GL.Disabled
-
+                        -- | Load old stencil.
+                        loadStencil sp
 
         -- colors with float components.
         Color col p
@@ -197,7 +201,7 @@ drawPicture (state@State{stateModelingMatrix=modelingMatrix}) circScale picture
          -- -> GL.preservingMatrix
          --  $ do  GL.translate (GL.Vector3 (gf tx) (gf ty) 0)
          --        drawPicture state circScale p
-         -> drawPicture state{stateModelingMatrix = modelingMatrix !*! newMatrix} circScale p
+         -> drawPicture (multMatrix state newMatrix) circScale p
           where
             newMatrix = V3
               (V3 1 0 tx)
@@ -221,7 +225,7 @@ drawPicture (state@State{stateModelingMatrix=modelingMatrix}) circScale picture
 
         
         Rotate deg p
-         -> drawPicture state{stateModelingMatrix = modelingMatrix !*! newMatrix} circScale p
+         -> drawPicture (multMatrix state newMatrix) circScale p
           where
             ccwRad = negate (deg * pi / 180)
             s = sin ccwRad
@@ -234,7 +238,7 @@ drawPicture (state@State{stateModelingMatrix=modelingMatrix}) circScale picture
 
         -- Scale --------------------------------
         Scale sx sy p
-         -> drawPicture state{stateModelingMatrix = modelingMatrix !*! newMatrix} circScale p
+         -> drawPicture (multMatrix state newMatrix) circScale p
           where
             newMatrix = V3
               (V3 sx  0  0)
@@ -292,6 +296,8 @@ drawPicture (state@State{stateModelingMatrix=modelingMatrix}) circScale picture
         Pictures ps
          -> mapM_ (drawPicture state circScale) ps
         
+
+
 -- Errors ---------------------------------------------------------------------
 checkErrors :: String -> IO ()
 checkErrors place

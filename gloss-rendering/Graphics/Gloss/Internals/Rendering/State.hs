@@ -4,7 +4,8 @@
 module Graphics.Gloss.Internals.Rendering.State
         ( State (..)
         , initState
-        , Texture (..))
+        , Texture (..)
+        , multMatrix)
 where
 import Graphics.Gloss.Internals.Data.Picture
 import Foreign.ForeignPtr
@@ -36,6 +37,9 @@ data State
 
         -- | Active modeling matrix
         , stateModelingMatrix   :: M33 Float
+
+        -- | Current stencil in current modeling space.
+        , stateStencils :: [Path]
         }
         
 
@@ -62,6 +66,17 @@ data Texture
 
          }
 
+multMatrix :: State -> M33 Float -> State
+multMatrix state@State{stateModelingMatrix=mm,stateStencils=sp} newMatrix = state{
+        stateModelingMatrix = mm !*! newMatrix,
+        stateStencils     = map (map $ toPoint . (toNewSpace !*) . toV3) sp
+    }
+    where
+        toPoint (V3 x y w) = (x/w, y/w)
+        toV3 (x, y) = (V3 x y 1)
+
+        toNewSpace :: M33 Float
+        toNewSpace = inv33 newMatrix
 
 -- | A mutable render state holds references to the textures currently loaded
 --   into the OpenGL context. To ensure that textures are cached in GPU memory,
@@ -75,5 +90,6 @@ initState
                 , stateBlendAlpha       = True
                 , stateLineSmooth       = False 
                 , stateTextures         = textures
-                , stateModelingMatrix   = identity }
+                , stateModelingMatrix   = identity
+                , stateStencils       = [] }
         
