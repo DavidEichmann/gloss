@@ -14,10 +14,11 @@ import Foreign.ForeignPtr
 import Data.IORef
 import Data.List
 import Control.Monad
-import Graphics.Rendering.OpenGL                        (($=), get)
-import qualified Graphics.Rendering.OpenGL.GL           as GL
-import qualified Graphics.Rendering.OpenGL.GLU.Errors   as GLU
-import qualified Graphics.UI.GLUT                       as GLUT
+import Graphics.Rendering.OpenGL                                (($=), get)
+import qualified Graphics.Rendering.OpenGL.GL                   as GL
+import qualified Graphics.Rendering.OpenGL.GLU.Tessellation     as GLU
+import qualified Graphics.Rendering.OpenGL.GLU.Errors           as GLU
+import qualified Graphics.UI.GLUT                               as GLUT
 import Linear
 
 
@@ -457,10 +458,22 @@ vertexPFs State{stateModelingMatrix=m} ps
 generalPolygon :: Path -> [Path]
 generalPolygon points = triangulation points where
 
-    -- This is a super inefficient implementations
+    triangulationToPath :: GLU.Triangulation Point -> Path
+    triangulationToPath (GLU.Triangulation triangles) = map (\(GLU.Triangle (GLU.TriangleVertex p1) (GLU.TriangleVertex p2) (GLU.TriangleVertex p3)) -> [p1, p2, p3]) triangles
+
     triangulation :: [Point] -> [Path]
-    triangulation path | length path < 3 = []
-    triangulation path = case cutEar path of
+    triangulation ps = triangulationToPath $ GLU.triangulate              -- Tessellator Triangulation Point = TessWinding -> Tolerance -> Normal3 GLdouble -> Combiner Point -> ComplexPolygon Point -> IO (Triangulation Point)
+                            GLU.TessWindingOdd
+                            0
+                            (GLU.Normal3 1 1 0)
+                            (\(GLU.Vertex3 x y z) (GLU.WeightedProperties (w1, (x1,y1)) (w2, (x2,y2)) (w3, (x3,y3)) (w4, (x4,y4))) -> ((x1*w1 + x2*w2 + x3*w3 + x4*w4) / 4, (y1*w1 + y2*w2 + y3*w3 + y4*w4) / 4))
+                            (GLU.ComplexPolygon [GLU.ComplexContour (zipWith GLU.AnnotatedVertex (map (\(x, y) -> GLU.Vertex3 (realToFrac x) (realToFrac y) 0)) (ps))])
+
+
+    -- This is a super inefficient implementation
+    triangulation' :: [Point] -> [Path]
+    triangulation' path | length path < 3 = []
+    triangulation' path = case cutEar path of
         Nothing               -> [path]
         Just (ear, newPoints) -> ear : triangulation newPoints
 
