@@ -21,6 +21,8 @@ import qualified Graphics.Rendering.OpenGL.GLU.Errors           as GLU
 import qualified Graphics.UI.GLUT                               as GLUT
 import Linear
 
+import Debug.Trace
+
 
 -- | Render a picture into the current OpenGL context.
 --
@@ -76,7 +78,9 @@ drawPicture (state@State{stateModelingMatrix=modelingMatrix, stateStencils=sp}) 
                 $ vertexPFs state path
                 
          | otherwise
-         -> mapM_ (drawPicture state circScale . PolygonConvex) (generalPolygon path)
+         -> do
+            triangulatedPaths <- generalPolygon path
+            mapM_ (drawPicture state circScale . PolygonConvex) triangulatedPaths
 
         -- circle
         Circle radius
@@ -455,27 +459,37 @@ vertexPFs State{stateModelingMatrix=m} ps
 
 
 -- | Convert a non self intersecting (possibly concave) polygon into a Picture
-generalPolygon :: Path -> [Path]
-generalPolygon points = triangulation points where
+generalPolygon :: Path -> IO [Path]
+generalPolygon points = {-# SCC "triangulatePolygon" #-} triangulation points where
 
-    triangulationToPath :: GLU.Triangulation Point -> Path
-    triangulationToPath (GLU.Triangulation triangles) = map (\(GLU.Triangle (GLU.TriangleVertex p1) (GLU.TriangleVertex p2) (GLU.TriangleVertex p3)) -> [p1, p2, p3]) triangles
+    triangulationToPaths :: GLU.Triangulation () -> [Path]
+    triangulationToPaths (GLU.Triangulation triangles) = map (\(GLU.Triangle
+                                                                (GLU.AnnotatedVertex (GL.Vertex3 x1 y1 _) _)
+                                                                (GLU.AnnotatedVertex (GL.Vertex3 x2 y2 _) _)
+                                                                (GLU.AnnotatedVertex (GL.Vertex3 x3 y3 _) _))
+                                                                -> [(realToFrac x1, realToFrac y1), (realToFrac x2, realToFrac y2), (realToFrac x3, realToFrac y3)]) triangles
 
-    triangulation :: [Point] -> [Path]
-    triangulation ps = triangulationToPath $ GLU.triangulate              -- Tessellator Triangulation Point = TessWinding -> Tolerance -> Normal3 GLdouble -> Combiner Point -> ComplexPolygon Point -> IO (Triangulation Point)
+    triangulation' :: [Point] -> IO [Path]
+    triangulation' ps = do
+        glutTri <- GLU.triangulate              -- Tessellator Triangulation Point = TessWinding -> Tolerance -> Normal3 GLdouble -> Combiner Point -> ComplexPolygon Point -> IO (Triangulation Point)
                             GLU.TessWindingOdd
                             0
-                            (GLU.Normal3 1 1 0)
-                            (\(GLU.Vertex3 x y z) (GLU.WeightedProperties (w1, (x1,y1)) (w2, (x2,y2)) (w3, (x3,y3)) (w4, (x4,y4))) -> ((x1*w1 + x2*w2 + x3*w3 + x4*w4) / 4, (y1*w1 + y2*w2 + y3*w3 + y4*w4) / 4))
-                            (GLU.ComplexPolygon [GLU.ComplexContour (zipWith GLU.AnnotatedVertex (map (\(x, y) -> GLU.Vertex3 (realToFrac x) (realToFrac y) 0)) (ps))])
+                            (GL.Normal3 0 0 1)
+                            (\_ _ -> ())
+                            (GLU.ComplexPolygon [GLU.ComplexContour (zipWith GLU.AnnotatedVertex (map (\(x, y) -> GL.Vertex3 (realToFrac x) (realToFrac y) 0) ps) (repeat ()))])
+
+        return $ triangulationToPaths glutTri
 
 
     -- This is a super inefficient implementation
-    triangulation' :: [Point] -> [Path]
-    triangulation' path | length path < 3 = []
-    triangulation' path = case cutEar path of
+    triangulation :: [Point] -> IO [Path]
+    triangulation = return . triangulation''
+
+    triangulation'' :: [Point] -> [Path]
+    triangulation'' path | length path < 3 = []
+    triangulation'' path = case cutEar path of
         Nothing               -> [path]
-        Just (ear, newPoints) -> ear : triangulation newPoints
+        Just (ear, newPoints) -> ear : triangulation'' newPoints
 
     cutEar :: [Point] -> Maybe ([Point], [Point])
     cutEar path | n >= 3 = do -- Maybe
