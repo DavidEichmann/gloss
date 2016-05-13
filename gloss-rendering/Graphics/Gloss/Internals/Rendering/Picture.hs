@@ -84,17 +84,17 @@ drawPicture (state@State{stateModelingMatrix=modelingMatrix, stateStencils=sp}) 
 
         -- circle
         Circle radius
-         ->  renderCircle 0 0 circScale radius 0
+         ->  renderCircle (vertexPFs state) 0 0 circScale radius 0
         
         ThickCircle radius thickness
-         ->  renderCircle 0 0 circScale radius thickness
+         ->  renderCircle (vertexPFs state) 0 0 circScale radius thickness
         
         -- arc
         Arc a1 a2 radius
-         ->  renderArc 0 0 circScale radius a1 a2 0
+         ->  renderArc (vertexPFs state) 0 0 circScale radius a1 a2 0
              
         ThickArc a1 a2 radius thickness
-         ->  renderArc 0 0 circScale radius a1 a2 thickness
+         ->  renderArc (vertexPFs state) 0 0 circScale radius a1 a2 thickness
              
         -- stroke text
         --      text looks weird when we've got blend on,
