@@ -205,7 +205,7 @@ callbackDisplay
 
 callbackDisplay stateRef callbacks
  = do  -- clear the display
-        GL.clear [GL.ColorBuffer, GL.DepthBuffer]
+        GL.clear [GL.ColorBuffer, GL.DepthBuffer, GL.StencilBuffer]
         GL.color $ GL.Color4 0 0 0 (1 :: GL.GLfloat)
 
         -- get the display callbacks from the chain

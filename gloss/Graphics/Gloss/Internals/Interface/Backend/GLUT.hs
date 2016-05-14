@@ -197,7 +197,7 @@ callbackDisplay
 callbackDisplay refState callbacks 
  = do   
         -- Clear the display
-        GL.clear [GL.ColorBuffer, GL.DepthBuffer]
+        GL.clear [GL.ColorBuffer, GL.DepthBuffer, GL.StencilBuffer]
         GL.color $ GL.Color4 0 0 0 (1 :: GL.GLfloat)
 
         -- Run all the display callbacks to draw the window contents.

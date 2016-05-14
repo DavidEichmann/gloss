@@ -5,8 +5,6 @@ module Graphics.Gloss.Internals.Rendering.Circle
         ( renderCircle
         , renderArc)
 where
-import  Graphics.Gloss.Internals.Rendering.Common
-import  GHC.Exts
 import  qualified Graphics.Rendering.OpenGL.GL          as GL
 
 

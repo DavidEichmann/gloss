@@ -3,6 +3,7 @@
 module Graphics.Gloss.Internals.Rendering.Picture
         (renderPicture)
 where
+import Control.Monad
 import Graphics.Gloss.Internals.Rendering.State
 import Graphics.Gloss.Internals.Rendering.Common
 import Graphics.Gloss.Internals.Rendering.Circle
@@ -106,7 +107,7 @@ drawPicture (state@State{stateModelingMatrix=modelingMatrix, stateStencils=sp}) 
                 GL.blend        $= GL.Enabled
              
         -- Stencil -------------------------------
-        Stencil path p
+        Stencil path pic
          | length (take 3 path) < 3
          -> return ()
          
@@ -120,26 +121,19 @@ drawPicture (state@State{stateModelingMatrix=modelingMatrix, stateStencils=sp}) 
                     maxY = maximum . map snd $ path
                     maxExtent = circScale * (max (maxX - minX) (maxY - minY))
 
-                    loadStencil :: [Path] -> IO ()
-                    loadStencil [] = do
-                            GL.stencilTest  $= GL.Disabled
-                            GL.clear [GL.StencilBuffer]
-                    loadStencil stencilToLoad = do
-                            GL.stencilTest  $= GL.Enabled
-                            
+                    loadStencil :: Bool -> Path -> IO ()
+                    loadStencil load stencilPolygon = do
                             -- | Start editing the stencil buffer (never write into the color buffer)
                             GL.stencilFunc  $= (GL.Always, 1, 0xFF)
-                            GL.stencilOp    $= (GL.OpKeep, GL.OpKeep, GL.OpIncr)
+                            GL.stencilOp    $= (GL.OpKeep, GL.OpKeep, if load then GL.OpIncr else GL.OpDecr)
                             GL.stencilMask  $= 0xFF
                             GL.depthMask    $= GL.Disabled
                             GL.colorMask    $= GL.Color4 GL.Disabled GL.Disabled GL.Disabled GL.Disabled
-                            GL.clear        [GL.StencilBuffer]
 
                             -- | Draw the stencil path into the stencil buffer
-                            mapM_ (\stencilPolygon -> drawPicture state circScale (Polygon stencilPolygon)) stencilToLoad
+                            drawPicture state circScale (Polygon stencilPolygon)
 
                             -- | Stop editing the stencil buffer
-                            GL.stencilFunc  $= (GL.Equal, fromIntegral $ length stencilToLoad, 0xFF)
                             GL.stencilMask  $= 0x00
                             GL.depthMask    $= GL.Enabled
                             GL.colorMask    $= GL.Color4 GL.Enabled GL.Enabled GL.Enabled GL.Enabled
@@ -150,9 +144,14 @@ drawPicture (state@State{stateModelingMatrix=modelingMatrix, stateStencils=sp}) 
                 if False || maxExtent < 1
                     then return ()
                     else do
+                        when (null sp)
+                          (GL.stencilTest $= GL.Enabled)
 
-                        -- | Load new stencil
-                        loadStencil (path : sp)
+                        let stencilCount = fromIntegral $ length sp
+
+                        -- | Load the stencil
+                        loadStencil True path
+                        GL.stencilFunc  $= (GL.Equal, stencilCount + 1, 0xFF)
 
                         -- | Clear the color buffer under the stencil.
                         currentColor <- get GL.currentColor
@@ -162,10 +161,15 @@ drawPicture (state@State{stateModelingMatrix=modelingMatrix, stateStencils=sp}) 
                         GL.currentColor  $= currentColor
 
                         -- | Draw the picture into the stencil.
-                        drawPicture state{stateStencils=path:sp} circScale p
+                        drawPicture state{stateStencils=path:sp} circScale pic
 
                         -- | Load old stencil.
-                        loadStencil sp
+                        loadStencil False path
+                        GL.stencilFunc  $= (GL.Equal, stencilCount, 0xFF)
+
+                        -- | disable the stencil test if this is a top level stencil.
+                        when (null sp)
+                            (GL.stencilTest $= GL.Disabled)
 
         -- colors with float components.
         Color col p

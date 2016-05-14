@@ -73,7 +73,7 @@ withClearBuffer clearColor action
         GL.clearColor   GL.$= glColor4OfColor clearColor
 
         -- on every loop
-        GL.clear [GL.ColorBuffer, GL.DepthBuffer]
+        GL.clear [GL.ColorBuffer, GL.DepthBuffer, GL.StencilBuffer]
         GL.color $ GL.Color4 0 0 0 (1 :: GL.GLfloat)
 
         action
