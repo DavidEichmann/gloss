@@ -2,6 +2,7 @@
 module Graphics.Gloss.Rendering 
         ( -- * Picture data type
           Picture (..)
+        , RPicture (..)
         , Point, Vector, Path
 
           -- * Colors

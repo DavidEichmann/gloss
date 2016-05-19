@@ -1,6 +1,7 @@
 
 module Graphics.Gloss.Data.Picture
         ( Picture       (..)
+        , RPicture      (..)
         , Point, Vector, Path
 
         -- * Aliases for Picture constructors

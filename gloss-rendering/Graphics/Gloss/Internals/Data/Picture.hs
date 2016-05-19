@@ -8,12 +8,18 @@ module Graphics.Gloss.Internals.Data.Picture
         , Path
         , Picture(..)
 
+        , RPoint
+        , RPath
+        , RMatrix
+        , RPicture(..)
+
         -- * Bitmaps
         , BitmapData, PixelFormat(..), BitmapFormat(..), RowOrder(..)
         , bitmapOfForeignPtr
         , bitmapOfByteString
         , bitmapOfBMP
         , loadBMP)
+
 where
 import Graphics.Gloss.Internals.Data.Color
 import Graphics.Gloss.Internals.Rendering.Bitmap
@@ -29,6 +35,7 @@ import Data.Data
 import System.IO.Unsafe
 import qualified Data.ByteString.Unsafe as BSU
 import Prelude hiding (map)
+import Linear
 
 
 -- | A point on the x-y plane.
@@ -59,12 +66,30 @@ type Vector     = Point
 type Path       = [Point]                               
 
 
+-- | Better pictures
+type RPoint = V2 Rational
+type RPath  = [RPoint]
+type RMatrix = M33 Rational
+data RPicture
+        = RBlank
+        | RColor Color RPicture
+        | RPolygon RPath
+        | RPolygonConvex RPath
+        | RLine RPath
+        | RText String
+        | RStencil RPath RPicture
+        | RPictures [RPicture]
+        | RTransform RMatrix RPicture
+        deriving (Show, Eq, Data, Typeable)
+
 -- | A 2D picture
 data Picture
         -- Primitives -------------------------------------
 
         -- | A blank picture, with nothing in it.
-        = Blank
+        = RPic RPicture
+
+        | Blank
 
         -- | A polygon filled with a solid color.
         | Polygon       Path

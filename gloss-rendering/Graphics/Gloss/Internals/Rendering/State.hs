@@ -22,6 +22,7 @@ data State
         = State
         { -- | Whether to use color
           stateColor            :: !Bool
+        , stateCurrentColor     :: !(Maybe (GL.Color4 GL.GLfloat))
 
         -- | Whether to force wireframe mode only
         , stateWireframe        :: !Bool
@@ -36,10 +37,10 @@ data State
         , stateTextures         :: !(IORef [Texture])
 
         -- | Active modeling matrix
-        , stateModelingMatrix   :: M33 Float
+        , stateModelingMatrix   :: M33 Rational
 
         -- | Current stencil in current modeling space.
-        , stateStencils :: [Path]
+        , stateStencils :: [RPath]
         }
         
 
@@ -66,16 +67,16 @@ data Texture
 
          }
 
-multMatrix :: State -> M33 Float -> State
+multMatrix :: State -> M33 Rational -> State
 multMatrix state@State{stateModelingMatrix=mm,stateStencils=sp} newMatrix = state{
         stateModelingMatrix = mm !*! newMatrix,
-        stateStencils     = map (map $ toPoint . (toNewSpace !*) . toV3) sp
+        stateStencils     = map (map $ toV2 . (toNewSpace !*) . toV3) sp
     }
     where
-        toPoint (V3 x y w) = (x/w, y/w)
-        toV3 (x, y) = (V3 x y 1)
+        toV2 (V3 x y w) = V2 (x/w) (y/w)
+        toV3 (V2 x y) = V3 x y 1
 
-        toNewSpace :: M33 Float
+        toNewSpace :: M33 Rational
         toNewSpace = inv33 newMatrix
 
 -- | A mutable render state holds references to the textures currently loaded
@@ -86,6 +87,7 @@ initState
  = do   textures        <- newIORef []
         return  State
                 { stateColor            = True
+                , stateCurrentColor     = Nothing
                 , stateWireframe        = False
                 , stateBlendAlpha       = True
                 , stateLineSmooth       = False 

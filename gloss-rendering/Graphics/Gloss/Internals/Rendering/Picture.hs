@@ -37,7 +37,7 @@ renderPicture
         -> IO ()
 
 renderPicture state circScale picture
- = do   
+ = do
         -- Setup render state for world
         setLineSmooth   (stateLineSmooth state)
         setBlendAlpha   (stateBlendAlpha state)
@@ -48,10 +48,118 @@ renderPicture state circScale picture
         checkErrors "after drawPicture."
 
 
+vertexRPFs :: [RPoint] -> IO ()
+vertexRPFs = mapM_ (\(V2 x y) -> GL.vertex $ GL.Vertex2 (fromRational x) (fromRational y :: GL.GLfloat))
+
+toGlMatrixF :: M33 Rational -> IO (GL.GLmatrix GL.GLfloat)
+toGlMatrixF matrix = GL.newMatrix GL.RowMajor $ map fromRational ((\(V3 (V3 a b c) (V3 d e f) (V3 g h i)) -> [a,b,c,d,e,f,g,h,i]) matrix)
+
+drawRPicture :: State -> Rational -> RPicture -> IO ()
+drawRPicture (state@State{stateModelingMatrix=modelingMatrix, stateStencils=sp}) circScale picture
+  = {-# SCC "drawComponentRational" #-}
+    case picture of
+
+        RBlank  -> return ()
+
+        -- colors with float components.
+        RColor col p
+         |  stateColor state
+         ->  do
+                let
+                    RGBA r g b a  = col
+                    glCol = GL.Color4 (gf r) (gf g) (gf b) (gf a)
+                GL.currentColor  $= glCol
+                drawRPicture state{stateCurrentColor=Just glCol} circScale p
+                mapM_ (GL.currentColor $=) (stateCurrentColor state)
+
+         |  otherwise
+         ->     drawRPicture state circScale p
+
+        RPolygon path ->
+            mapM_ (drawRPicture state circScale . RPolygonConvex) (generalPolygonR path)
+        
+        RPolygonConvex path ->
+            GL.renderPrimitive GL.Polygon (vertexRPFs path)
+
+        RLine path ->
+            GL.renderPrimitive GL.Lines (vertexRPFs path)
+
+        RText str -> do
+            GL.blend        $= GL.Disabled
+            GL.preservingMatrix $ GLUT.renderString GLUT.Roman str
+            GL.blend        $= GL.Enabled
+        
+        RPictures ps ->
+            mapM_ (drawRPicture state circScale) ps
+        
+        RTransform matrix subPic -> do
+
+            let newState@State{stateModelingMatrix=netMatrixR} = multMatrix state matrix
+            netMatrixF <- toGlMatrixF netMatrixR
+            GL.matrix Nothing $= netMatrixF
+
+            let circMatrixScale = toRational . norm . fmap fromRational $ (matrix !* (V3 0 0 0)) - (matrix !* (V3 1 1 1))
+            drawRPicture (multMatrix state matrix) (circScale * circMatrixScale) subPic
+
+            modelingMatrixF <- toGlMatrixF modelingMatrix
+            GL.matrix Nothing $= modelingMatrixF
+
+        
+        RStencil path subPic -> do
+
+            let
+                loadStencil :: Bool -> RPath -> IO ()
+                loadStencil load stencilPolygon = do
+                        -- | Start editing the stencil buffer (never write into the color buffer)
+                        GL.stencilFunc  $= (GL.Always, 1, 0xFF)
+                        GL.stencilOp    $= (GL.OpKeep, GL.OpKeep, if load then GL.OpIncr else GL.OpDecr)
+                        GL.stencilMask  $= 0xFF
+                        GL.depthMask    $= GL.Disabled
+                        GL.colorMask    $= GL.Color4 GL.Disabled GL.Disabled GL.Disabled GL.Disabled
+
+                        -- | Draw the stencil path into the stencil buffer
+                        drawRPicture state circScale (RPolygon stencilPolygon)
+
+                        -- | Stop editing the stencil buffer
+                        GL.stencilMask  $= 0x00
+                        GL.depthMask    $= GL.Enabled
+                        GL.colorMask    $= GL.Color4 GL.Enabled GL.Enabled GL.Enabled GL.Enabled
+
+            when (null sp)
+              (GL.stencilTest $= GL.Enabled)
+
+            let stencilCount = fromIntegral $ length sp
+
+            -- | Load the stencil
+            loadStencil True path
+            GL.stencilFunc  $= (GL.Equal, stencilCount + 1, 0xFF)
+
+            -- | Clear the color buffer under the stencil.
+            currentColor <- get GL.currentColor
+            bgC          <- get GL.clearColor
+            GL.currentColor  $= bgC
+            drawRPicture state circScale (RPolygon path)
+            GL.currentColor  $= currentColor
+
+            -- | Draw the picture into the stencil.
+            drawRPicture state{stateStencils=path:sp} circScale subPic
+
+            -- | Load old stencil.
+            loadStencil False path
+            GL.stencilFunc  $= (GL.Equal, stencilCount, 0xFF)
+
+            -- | disable the stencil test if this is a top level stencil.
+            when (null sp)
+                (GL.stencilTest $= GL.Disabled)
+
+
 drawPicture :: State -> Float -> Picture -> IO ()         
 drawPicture (state@State{stateModelingMatrix=modelingMatrix, stateStencils=sp}) circScale picture
  = {-# SCC "drawComponent" #-}
    case picture of
+
+        RPic rp
+         -> drawRPicture state (toRational circScale) rp
 
         -- nothin'
         Blank
@@ -161,7 +269,8 @@ drawPicture (state@State{stateModelingMatrix=modelingMatrix, stateStencils=sp}) 
                         GL.currentColor  $= currentColor
 
                         -- | Draw the picture into the stencil.
-                        drawPicture state{stateStencils=path:sp} circScale pic
+                        let pathR = map (\(x,y) -> fmap toRational (V2 x y)) path
+                        drawPicture state{stateStencils=pathR:sp} circScale pic
 
                         -- | Load old stencil.
                         loadStencil False path
@@ -212,7 +321,7 @@ drawPicture (state@State{stateModelingMatrix=modelingMatrix, stateStencils=sp}) 
          --        drawPicture state circScale p
          -> drawPicture (multMatrix state newMatrix) circScale p
           where
-            newMatrix = V3
+            newMatrix = (fmap.fmap) toRational $ V3
               (V3 1 0 tx)
               (V3 0 1 ty)
               (V3 0 0 1)
@@ -239,7 +348,7 @@ drawPicture (state@State{stateModelingMatrix=modelingMatrix, stateStencils=sp}) 
             ccwRad = negate (deg * pi / 180)
             s = sin ccwRad
             c = cos ccwRad
-            newMatrix = V3
+            newMatrix = (fmap.fmap) toRational $ V3
               (V3 c (-s) 0)
               (V3 s   c  0)
               (V3 0   0  1)
@@ -249,7 +358,7 @@ drawPicture (state@State{stateModelingMatrix=modelingMatrix, stateStencils=sp}) 
         Scale sx sy p
          -> drawPicture (multMatrix state newMatrix) circScale p
           where
-            newMatrix = V3
+            newMatrix = (fmap.fmap) toRational $ V3
               (V3 sx  0  0)
               (V3 0  sy  0)
               (V3 0   0  1)
@@ -454,8 +563,10 @@ setLineSmooth state
 
 vertexPFs :: State -> [(Float, Float)] -> IO ()
 vertexPFs _ [] = return ()
-vertexPFs State{stateModelingMatrix=m} ps
- = mapM_ (\(V3 x y w) -> GL.vertex $ GL.Vertex2 (gf (x / w)) (gf (y / w))) (map (\(x, y) -> m !* (V3 x y 1)) ps)
+vertexPFs State{stateModelingMatrix=mR} ps
+    = mapM_ (\(V3 x y w) -> GL.vertex $ GL.Vertex2 (gf (x / w)) (gf (y / w))) (map (\(x, y) -> m !* (V3 x y 1)) ps)
+    where
+        m = (fmap . fmap) fromRational mR
 {-# INLINE vertexPFs #-}
 
 
@@ -523,6 +634,65 @@ generalPolygon points = {-# SCC "triangulatePolygon" #-} triangulation points wh
 
     cycledPoints :: Path
     cycledPoints = cycle points
+
+-- | Convert a non self intersecting (possibly concave) polygon into a Picture
+generalPolygonR :: RPath -> [RPath]
+generalPolygonR points = {-# SCC "triangulatePolygonR" #-} triangulation points where
+
+    -- This is a super inefficient implementation
+    triangulation :: [RPoint] -> [RPath]
+    triangulation = triangulation''
+
+    triangulation'' :: [RPoint] -> [RPath]
+    triangulation'' path | length path < 3 = []
+    triangulation'' path = case cutEar path of
+        Nothing               -> [path]
+        Just (ear, newPoints) -> ear : triangulation'' newPoints
+
+    cutEar :: [RPoint] -> Maybe ([RPoint], [RPoint])
+    cutEar path | n >= 3 = do -- Maybe
+        (ear@[a,b,c], rest) <- find (uncurry isEar) candidateEarsAndRest
+        return $ (ear, a:c:rest)
+        where
+            n = length path
+            candidateEarsAndRest = take n . map (splitAt 3 . take n) . tails . cycle $ path
+
+            isEar :: [RPoint] -> [RPoint] -> Bool
+            isEar [a,b,c] rest' = (winding * polygonWinding > 0) && (not $ any ((flip isPointInTriangleR) (a,b,c)) rest')
+                where
+                    (V2 a2bx a2by) = b - a
+                    (V2 b2cx b2cy) = c - b
+                    winding = (b2cx * a2by) - (b2cy * a2bx)
+
+    cutEar _ = Nothing
+
+
+    -- | The sign of this value indicates CW or CCW winding if positive or negative respectivelly.
+    polygonWinding :: Rational
+    polygonWinding = sum [(ay + by) * (bx - ax) | ((V2 ax ay), (V2 bx by)) <- edges]
+
+    edges :: [(RPoint, RPoint)]
+    edges = zip points (tail cycledPoints)
+
+    -- corners :: [(Point, Point, Point)]
+    -- corners = zip3 points (drop 1 cycledPoints) (drop 2 cycledPoints)
+
+    cycledPoints :: RPath
+    cycledPoints = cycle points
+
+isPointInTriangleR :: (Fractional a, Ord a) => V2 a -> (V2 a, V2 a, V2 a) -> Bool
+isPointInTriangleR p t = let (ba,bb,bc) = toBarycentricR p t in 0 < ba && ba < 1 && 0 < bb && bb < 1 && 0 < bc && bc < 1
+
+toBarycentricR :: Fractional a => V2 a -> (V2 a, V2 a, V2 a) -> (a, a, a)
+toBarycentricR (V2 x y) ((V2 x1 y1), (V2 x2 y2), (V2 x3 y3)) = (ba, bb, bc) where
+
+    ba = (((y2-y3)*(xx3)) + ((x3-x2)*(yy3))) / denom
+    bb = (((y3-y1)*(xx3)) + ((x1-x3)*(yy3))) / denom
+    bc = 1 - ba - bb
+
+    xx3 = x - x3
+    yy3 = y - y3
+    denom = (((y2-y3)*(x1-x3)) + ((x3-x2)*(y1-y3)))
 
 isPointInTriangle :: Point -> (Point, Point, Point) -> Bool
 isPointInTriangle p t = let (ba,bb,bc) = toBarycentric p t in 0 < ba && ba < 1 && 0 < bb && bb < 1 && 0 < bc && bc < 1
