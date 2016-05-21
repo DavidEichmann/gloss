@@ -1,4 +1,6 @@
 resolver: lts-5.0
 packages:
-- ../gloss-rendering
 - .
+- ../gloss-rendering
+- ../../linear
+- ../../GameGeometry

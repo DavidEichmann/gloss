@@ -4,4 +4,4 @@ gloss/cabal.sandbox.config
 gloss/dist/
 gloss-rendering/.cabal-sandbox/
 gloss-rendering/cabal.sandbox.config
-
+*/.stack-work

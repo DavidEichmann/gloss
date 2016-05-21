@@ -645,7 +645,7 @@ generalPolygon points = {-# SCC "triangulatePolygon" #-} triangulation points wh
 
 -- | Convert a non self intersecting (possibly concave) polygon into a Picture
 generalPolygonR :: RPath -> [RPath]
-generalPolygonR points = {-# SCC "triangulatePolygonR" #-} triangulation'' (traceShowId points) where
+generalPolygonR points = {-# SCC "triangulatePolygonR" #-} triangulation'' points where
 
     -- This is a super inefficient implementation
     triangulation'' :: [RPoint] -> [RPath]

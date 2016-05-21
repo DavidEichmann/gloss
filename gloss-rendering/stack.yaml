@@ -1,1 +1,6 @@
 resolver: lts-5.0
+packages:
+- '.'
+- ../gloss
+- ../../linear
+- ../../GameGeometry
