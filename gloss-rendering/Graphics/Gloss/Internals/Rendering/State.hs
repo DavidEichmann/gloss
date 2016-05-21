@@ -87,7 +87,7 @@ initState
  = do   textures        <- newIORef []
         return  State
                 { stateColor            = True
-                , stateCurrentColor     = Nothing
+                , stateCurrentColor     = Just (GL.Color4 0 0 0 1)
                 , stateWireframe        = False
                 , stateBlendAlpha       = True
                 , stateLineSmooth       = False 

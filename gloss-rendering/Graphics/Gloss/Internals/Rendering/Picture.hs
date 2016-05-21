@@ -1,7 +1,8 @@
 {-# OPTIONS_HADDOCK hide #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Graphics.Gloss.Internals.Rendering.Picture
-        (renderPicture)
+        (renderPicture, generalPolygonR)
 where
 import Control.Monad
 import Graphics.Gloss.Internals.Rendering.State
@@ -52,7 +53,11 @@ vertexRPFs :: [RPoint] -> IO ()
 vertexRPFs = mapM_ (\(V2 x y) -> GL.vertex $ GL.Vertex2 (fromRational x) (fromRational y :: GL.GLfloat))
 
 toGlMatrixF :: M33 Rational -> IO (GL.GLmatrix GL.GLfloat)
-toGlMatrixF matrix = GL.newMatrix GL.RowMajor $ map fromRational ((\(V3 (V3 a b c) (V3 d e f) (V3 g h i)) -> [a,b,c,d,e,f,g,h,i]) matrix)
+toGlMatrixF matrix = GL.newMatrix GL.RowMajor $ map fromRational ((\(V3 (V3 a b c) (V3 d e f) (V3 g h i)) ->
+                                                                        [a,b,0,c
+                                                                        ,d,e,0,f
+                                                                        ,0,0,1,0
+                                                                        ,g,h,0,i]) matrix)
 
 drawRPicture :: State -> Rational -> RPicture -> IO ()
 drawRPicture (state@State{stateModelingMatrix=modelingMatrix, stateStencils=sp}) circScale picture
@@ -76,13 +81,15 @@ drawRPicture (state@State{stateModelingMatrix=modelingMatrix, stateStencils=sp})
          ->     drawRPicture state circScale p
 
         RPolygon path ->
+            -- drawPicture state (fromRational circScale) (Polygon $ ((map (\(V2 x y) -> (fromRational x,fromRational y)))) path)
             mapM_ (drawRPicture state circScale . RPolygonConvex) (generalPolygonR path)
+            -- GL.renderPrimitive GL.Polygon (vertexRPFs path)
         
         RPolygonConvex path ->
             GL.renderPrimitive GL.Polygon (vertexRPFs path)
 
         RLine path ->
-            GL.renderPrimitive GL.Lines (vertexRPFs path)
+            GL.renderPrimitive GL.LineStrip (vertexRPFs path)
 
         RText str -> do
             GL.blend        $= GL.Disabled
@@ -96,6 +103,7 @@ drawRPicture (state@State{stateModelingMatrix=modelingMatrix, stateStencils=sp})
 
             let newState@State{stateModelingMatrix=netMatrixR} = multMatrix state matrix
             netMatrixF <- toGlMatrixF netMatrixR
+
             GL.matrix Nothing $= netMatrixF
 
             let circMatrixScale = toRational . norm . fmap fromRational $ (matrix !* (V3 0 0 0)) - (matrix !* (V3 1 1 1))
@@ -159,7 +167,7 @@ drawPicture (state@State{stateModelingMatrix=modelingMatrix, stateStencils=sp}) 
    case picture of
 
         RPic rp
-         -> drawRPicture state (toRational circScale) rp
+         -> GL.preservingMatrix $ drawRPicture state (toRational circScale) rp
 
         -- nothin'
         Blank
@@ -637,12 +645,9 @@ generalPolygon points = {-# SCC "triangulatePolygon" #-} triangulation points wh
 
 -- | Convert a non self intersecting (possibly concave) polygon into a Picture
 generalPolygonR :: RPath -> [RPath]
-generalPolygonR points = {-# SCC "triangulatePolygonR" #-} triangulation points where
+generalPolygonR points = {-# SCC "triangulatePolygonR" #-} triangulation'' (traceShowId points) where
 
     -- This is a super inefficient implementation
-    triangulation :: [RPoint] -> [RPath]
-    triangulation = triangulation''
-
     triangulation'' :: [RPoint] -> [RPath]
     triangulation'' path | length path < 3 = []
     triangulation'' path = case cutEar path of
