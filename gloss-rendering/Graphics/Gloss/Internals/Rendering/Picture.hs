@@ -82,8 +82,8 @@ drawRPicture (state@State{stateModelingMatrix=modelingMatrix, stateStencils=sp})
 
         RPolygon path ->
             -- drawPicture state (fromRational circScale) (Polygon $ ((map (\(V2 x y) -> (fromRational x,fromRational y)))) path)
-            mapM_ (drawRPicture state circScale . RPolygonConvex) (generalPolygonR path)
             -- GL.renderPrimitive GL.Polygon (vertexRPFs path)
+            mapM_ (drawRPicture state circScale . RPolygonConvex) (generalPolygonR path)
         
         RPolygonConvex path ->
             GL.renderPrimitive GL.Polygon (vertexRPFs path)
@@ -685,8 +685,21 @@ generalPolygonR points = {-# SCC "triangulatePolygonR" #-} triangulation'' point
     cycledPoints :: RPath
     cycledPoints = cycle points
 
+data Winding = CCW | CW
+
+isPointInConvexPoly :: (Fractional a, Eq a) => Winding -> [V2 a] -> V2 a -> Bool
+isPointInConvexPoly winding path p = all isPointOnCorrectSideOfEdge edges
+    where
+        cleanPath = map head . group $ path
+        edges = let cleanPathA:cleanPathB:_ = permutations cleanPath in zip cleanPathA cleanPathB
+        isOnCorrectSideSignum = case winding of
+            CCW -> 1
+            CW  -> (-1)
+        isPointOnCorrectSideOfEdge (a, b) = isOnCorrectSideSignum == signum ((b - a) `crossZ` (p - b))
+
 isPointInTriangleR :: (Fractional a, Ord a) => V2 a -> (V2 a, V2 a, V2 a) -> Bool
-isPointInTriangleR p t = let (ba,bb,bc) = toBarycentricR p t in 0 < ba && ba < 1 && 0 < bb && bb < 1 && 0 < bc && bc < 1
+isPointInTriangleR p (a,b,c) = isPointInConvexPoly CCW [a,b,c] p
+--isPointInTriangleR p t = let (ba,bb,bc) = toBarycentricR p t in 0 < ba && ba < 1 && 0 < bb && bb < 1 && 0 < bc && bc < 1
 
 toBarycentricR :: Fractional a => V2 a -> (V2 a, V2 a, V2 a) -> (a, a, a)
 toBarycentricR (V2 x y) ((V2 x1 y1), (V2 x2 y2), (V2 x3 y3)) = (ba, bb, bc) where
