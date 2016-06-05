@@ -113,11 +113,13 @@ drawRPicture (state@State{stateModelingMatrix=modelingMatrix, stateStencils=sp})
             GL.matrix Nothing $= modelingMatrixF
 
         
-        RStencil path subPic -> do
+        RStencil paths subPic -> do
 
             let
-                loadStencil :: Bool -> RPath -> IO ()
-                loadStencil load stencilPolygon = do
+                pathsPic = RPictures $ map RPolygon paths
+
+                loadStencil :: Bool -> IO ()
+                loadStencil load = do
                         -- | Start editing the stencil buffer (never write into the color buffer)
                         GL.stencilFunc  $= (GL.Always, 1, 0xFF)
                         GL.stencilOp    $= (GL.OpKeep, GL.OpKeep, if load then GL.OpIncr else GL.OpDecr)
@@ -126,7 +128,7 @@ drawRPicture (state@State{stateModelingMatrix=modelingMatrix, stateStencils=sp})
                         GL.colorMask    $= GL.Color4 GL.Disabled GL.Disabled GL.Disabled GL.Disabled
 
                         -- | Draw the stencil path into the stencil buffer
-                        drawRPicture state circScale (RPolygon stencilPolygon)
+                        drawRPicture state circScale pathsPic
 
                         -- | Stop editing the stencil buffer
                         GL.stencilMask  $= 0x00
@@ -139,21 +141,21 @@ drawRPicture (state@State{stateModelingMatrix=modelingMatrix, stateStencils=sp})
             let stencilCount = fromIntegral $ length sp
 
             -- | Load the stencil
-            loadStencil True path
+            loadStencil True
             GL.stencilFunc  $= (GL.Equal, stencilCount + 1, 0xFF)
 
             -- | Clear the color buffer under the stencil.
             currentColor <- get GL.currentColor
             bgC          <- get GL.clearColor
             GL.currentColor  $= bgC
-            drawRPicture state circScale (RPolygon path)
+            drawRPicture state circScale pathsPic
             GL.currentColor  $= currentColor
 
             -- | Draw the picture into the stencil.
-            drawRPicture state{stateStencils=path:sp} circScale subPic
+            drawRPicture state{stateStencils=paths:sp} circScale subPic
 
             -- | Load old stencil.
-            loadStencil False path
+            loadStencil False
             GL.stencilFunc  $= (GL.Equal, stencilCount, 0xFF)
 
             -- | disable the stencil test if this is a top level stencil.
@@ -223,22 +225,25 @@ drawPicture (state@State{stateModelingMatrix=modelingMatrix, stateStencils=sp}) 
                 GL.blend        $= GL.Enabled
              
         -- Stencil -------------------------------
-        Stencil path pic
-         | length (take 3 path) < 3
+        Stencil paths pic
+         | null paths
          -> return ()
          
          | otherwise
          -> do
                 -- | If smaller than a pixel, then don't render
                 let
-                    minX = minimum . map fst $ path
-                    maxX = maximum . map fst $ path
-                    minY = minimum . map snd $ path
-                    maxY = maximum . map snd $ path
+                    allPoints = concat paths
+                    minX = minimum . map fst $ allPoints
+                    maxX = maximum . map fst $ allPoints
+                    minY = minimum . map snd $ allPoints
+                    maxY = maximum . map snd $ allPoints
                     maxExtent = circScale * (max (maxX - minX) (maxY - minY))
 
-                    loadStencil :: Bool -> Path -> IO ()
-                    loadStencil load stencilPolygon = do
+                    pathsPic = Pictures $ map Polygon $ filter ((>2) . length . take 3) paths
+
+                    loadStencil :: Bool -> IO ()
+                    loadStencil load = do
                             -- | Start editing the stencil buffer (never write into the color buffer)
                             GL.stencilFunc  $= (GL.Always, 1, 0xFF)
                             GL.stencilOp    $= (GL.OpKeep, GL.OpKeep, if load then GL.OpIncr else GL.OpDecr)
@@ -247,7 +252,7 @@ drawPicture (state@State{stateModelingMatrix=modelingMatrix, stateStencils=sp}) 
                             GL.colorMask    $= GL.Color4 GL.Disabled GL.Disabled GL.Disabled GL.Disabled
 
                             -- | Draw the stencil path into the stencil buffer
-                            drawPicture state circScale (Polygon stencilPolygon)
+                            drawPicture state circScale pathsPic
 
                             -- | Stop editing the stencil buffer
                             GL.stencilMask  $= 0x00
@@ -257,7 +262,7 @@ drawPicture (state@State{stateModelingMatrix=modelingMatrix, stateStencils=sp}) 
                 -- | TODO also check if the stencil is out of the screen.
                 -- | TODO have a maximum depth?
 
-                if False || maxExtent < 1
+                if False -- maxExtent < 1
                     then return ()
                     else do
                         when (null sp)
@@ -266,22 +271,22 @@ drawPicture (state@State{stateModelingMatrix=modelingMatrix, stateStencils=sp}) 
                         let stencilCount = fromIntegral $ length sp
 
                         -- | Load the stencil
-                        loadStencil True path
+                        loadStencil True
                         GL.stencilFunc  $= (GL.Equal, stencilCount + 1, 0xFF)
 
                         -- | Clear the color buffer under the stencil.
                         currentColor <- get GL.currentColor
                         bgC          <- get GL.clearColor
                         GL.currentColor  $= bgC
-                        drawPicture state circScale (Polygon path)
+                        drawPicture state circScale pathsPic
                         GL.currentColor  $= currentColor
 
                         -- | Draw the picture into the stencil.
-                        let pathR = map (\(x,y) -> fmap toRational (V2 x y)) path
-                        drawPicture state{stateStencils=pathR:sp} circScale pic
+                        let pathsR = (map . map) (\(x,y) -> fmap toRational (V2 x y)) paths
+                        drawPicture state{stateStencils=pathsR:sp} circScale pic
 
                         -- | Load old stencil.
-                        loadStencil False path
+                        loadStencil False
                         GL.stencilFunc  $= (GL.Equal, stencilCount, 0xFF)
 
                         -- | disable the stencil test if this is a top level stencil.
@@ -370,6 +375,12 @@ drawPicture (state@State{stateModelingMatrix=modelingMatrix, stateStencils=sp}) 
               (V3 sx  0  0)
               (V3 0  sy  0)
               (V3 0   0  1)
+
+        -- Transform --------------------------------
+        Transform newMatrixF p
+         -> drawPicture (multMatrix state newMatrix) circScale p
+          where
+            newMatrix = (fmap.fmap) toRational $ newMatrixF
 
         -- Bitmap -------------------------------
         Bitmap width height imgData cacheMe

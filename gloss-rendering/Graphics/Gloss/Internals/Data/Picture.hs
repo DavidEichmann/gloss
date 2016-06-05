@@ -8,6 +8,7 @@ module Graphics.Gloss.Internals.Data.Picture
         , Path
         , Picture(..)
 
+        , RType
         , RPoint
         , RPath
         , RMatrix
@@ -67,9 +68,10 @@ type Path       = [Point]
 
 
 -- | Better pictures
-type RPoint = V2 Rational
+type RType = Rational
+type RPoint = V2 RType
 type RPath  = [RPoint]
-type RMatrix = M33 Rational
+type RMatrix = M33 RType
 data RPicture
         = RBlank
         | RColor Color RPicture
@@ -77,7 +79,7 @@ data RPicture
         | RPolygonConvex RPath
         | RLine RPath
         | RText String
-        | RStencil RPath RPicture
+        | RStencil [RPath] RPicture
         | RPictures [RPicture]
         | RTransform RMatrix RPicture
         deriving (Show, Eq, Data, Typeable)
@@ -120,7 +122,7 @@ data Picture
         | Text          String
 
         -- | A stenciled picture
-        | Stencil       Path    Picture
+        | Stencil       [Path]    Picture
 
         -- | A bitmap image with a width, height and some 32-bit RGBA
         --   bitmap data.
@@ -148,6 +150,9 @@ data Picture
 
         -- | A picture scaled by the given x and y factors.
         | Scale         Float   Float   Picture
+
+        -- | Row major transformation matrix.
+        | Transform     (M33 Float)   Picture
 
         -- More Pictures ----------------------------------
         -- | A picture consisting of several others.

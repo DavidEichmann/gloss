@@ -37,10 +37,10 @@ data State
         , stateTextures         :: !(IORef [Texture])
 
         -- | Active modeling matrix
-        , stateModelingMatrix   :: M33 Rational
+        , stateModelingMatrix   :: M33 RType
 
         -- | Current stencil in current modeling space.
-        , stateStencils :: [RPath]
+        , stateStencils :: [[RPath]]
         }
         
 
@@ -67,16 +67,16 @@ data Texture
 
          }
 
-multMatrix :: State -> M33 Rational -> State
+multMatrix :: State -> M33 RType -> State
 multMatrix state@State{stateModelingMatrix=mm,stateStencils=sp} newMatrix = state{
         stateModelingMatrix = mm !*! newMatrix,
-        stateStencils     = map (map $ toV2 . (toNewSpace !*) . toV3) sp
+        stateStencils     = (map . map) (map $ toV2 . (toNewSpace !*) . toV3) sp
     }
     where
         toV2 (V3 x y w) = V2 (x/w) (y/w)
         toV3 (V2 x y) = V3 x y 1
 
-        toNewSpace :: M33 Rational
+        toNewSpace :: M33 RType
         toNewSpace = inv33 newMatrix
 
 -- | A mutable render state holds references to the textures currently loaded
@@ -93,5 +93,5 @@ initState
                 , stateLineSmooth       = False 
                 , stateTextures         = textures
                 , stateModelingMatrix   = identity
-                , stateStencils       = [] }
+                , stateStencils         = [] }
         
