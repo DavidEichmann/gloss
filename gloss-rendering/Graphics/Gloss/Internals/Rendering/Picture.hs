@@ -594,7 +594,7 @@ vertexPFs State{stateModelingMatrix=mR} ps
 
 -- | Convert a non self intersecting (possibly concave) polygon into a Picture
 generalPolygon :: Path -> IO [Path]
-generalPolygon points = {-# SCC "triangulatePolygon" #-} triangulation points where
+generalPolygon points = {-# SCC "triangulatePolygon" #-} triangulation' points where
 
     triangulationToPaths :: GLU.Triangulation () -> [Path]
     triangulationToPaths (GLU.Triangulation triangles) = map (\(GLU.Triangle
