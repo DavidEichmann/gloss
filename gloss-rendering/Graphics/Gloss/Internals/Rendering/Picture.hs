@@ -42,7 +42,7 @@ renderPicture state circScale picture
         -- Setup render state for world
         setLineSmooth   (stateLineSmooth state)
         setBlendAlpha   (stateBlendAlpha state)
-        
+
         -- Draw the picture
         checkErrors "before drawPicture."
         drawPicture state circScale picture
@@ -52,118 +52,119 @@ renderPicture state circScale picture
 vertexRPFs :: [RPoint] -> IO ()
 vertexRPFs = mapM_ (\(V2 x y) -> GL.vertex $ GL.Vertex2 (fromRational x) (fromRational y :: GL.GLfloat))
 
-toGlMatrixF :: M33 Rational -> IO (GL.GLmatrix GL.GLfloat)
-toGlMatrixF matrix = GL.newMatrix GL.RowMajor $ map fromRational ((\(V3 (V3 a b c) (V3 d e f) (V3 g h i)) ->
-                                                                        [a,b,0,c
-                                                                        ,d,e,0,f
-                                                                        ,0,0,1,0
-                                                                        ,g,h,0,i]) matrix)
+toGlMatrixF :: M33 Float -> IO (GL.GLmatrix GL.GLfloat)
+toGlMatrixF matrix = GL.newMatrix GL.RowMajor $ ((\(V3 (V3 a b c) (V3 d e f) (V3 g h i)) ->
+                                                            [a,b,0,c
+                                                            ,d,e,0,f
+                                                            ,0,0,1,0
+                                                            ,g,h,0,i]) matrix)
 
 drawRPicture :: State -> Rational -> RPicture -> IO ()
 drawRPicture (state@State{stateModelingMatrix=modelingMatrix, stateStencils=sp}) circScale picture
-  = {-# SCC "drawComponentRational" #-}
-    case picture of
+    = undefined
+  -- = {-# SCC "drawComponentRational" #-}
+  --   case picture of
+  --
+  --       RBlank  -> return ()
+  --
+  --       -- colors with float components.
+  --       RColor col p
+  --        |  stateColor state
+  --        ->  do
+  --               let
+  --                   RGBA r g b a  = col
+  --                   glCol = GL.Color4 (gf r) (gf g) (gf b) (gf a)
+  --               GL.currentColor  $= glCol
+  --               drawRPicture state{stateCurrentColor=Just glCol} circScale p
+  --               mapM_ (GL.currentColor $=) (stateCurrentColor state)
+  --
+  --        |  otherwise
+  --        ->     drawRPicture state circScale p
+  --
+  --       RPolygon path ->
+  --           -- drawPicture state (fromRational circScale) (Polygon $ ((map (\(V2 x y) -> (fromRational x,fromRational y)))) path)
+  --           -- GL.renderPrimitive GL.Polygon (vertexRPFs path)
+  --           mapM_ (drawRPicture state circScale . RPolygonConvex) (generalPolygonR path)
+  --
+  --       RPolygonConvex path ->
+  --           GL.renderPrimitive GL.Polygon (vertexRPFs path)
+  --
+  --       RLine path ->
+  --           GL.renderPrimitive GL.LineStrip (vertexRPFs path)
+  --
+  --       RText str -> do
+  --           GL.blend        $= GL.Disabled
+  --           GL.preservingMatrix $ GLUT.renderString GLUT.Roman str
+  --           GL.blend        $= GL.Enabled
+  --
+  --       RPictures ps ->
+  --           mapM_ (drawRPicture state circScale) ps
+  --
+  --       RTransform matrix subPic -> do
+  --
+  --           let newState@State{stateModelingMatrix=netMatrixR} = multMatrix state matrix
+  --           netMatrixF <- toGlMatrixF netMatrixR
+  --
+  --           GL.matrix Nothing $= netMatrixF
+  --
+  --           let circMatrixScale = toRational . norm . fmap fromRational $ (matrix !* (V3 0 0 0)) - (matrix !* (V3 1 1 1))
+  --           drawRPicture (multMatrix state matrix) (circScale * circMatrixScale) subPic
+  --
+  --           modelingMatrixF <- toGlMatrixF modelingMatrix
+  --           GL.matrix Nothing $= modelingMatrixF
+  --
+  --
+  --       RStencil paths subPic -> do
+  --
+  --           let
+  --               pathsPic = RPictures $ map RPolygon paths
+  --
+  --               loadStencil :: Bool -> IO ()
+  --               loadStencil load = do
+  --                       -- | Start editing the stencil buffer (never write into the color buffer)
+  --                       GL.stencilFunc  $= (GL.Always, 1, 0xFF)
+  --                       GL.stencilOp    $= (GL.OpKeep, GL.OpKeep, if load then GL.OpIncr else GL.OpDecr)
+  --                       GL.stencilMask  $= 0xFF
+  --                       GL.depthMask    $= GL.Disabled
+  --                       GL.colorMask    $= GL.Color4 GL.Disabled GL.Disabled GL.Disabled GL.Disabled
+  --
+  --                       -- | Draw the stencil path into the stencil buffer
+  --                       drawRPicture state circScale pathsPic
+  --
+  --                       -- | Stop editing the stencil buffer
+  --                       GL.stencilMask  $= 0x00
+  --                       GL.depthMask    $= GL.Enabled
+  --                       GL.colorMask    $= GL.Color4 GL.Enabled GL.Enabled GL.Enabled GL.Enabled
+  --
+  --           when (null sp)
+  --             (GL.stencilTest $= GL.Enabled)
+  --
+  --           let stencilCount = fromIntegral $ length sp
+  --
+  --           -- | Load the stencil
+  --           loadStencil True
+  --           GL.stencilFunc  $= (GL.Equal, stencilCount + 1, 0xFF)
+  --
+  --           -- | Clear the color buffer under the stencil.
+  --           currentColor <- get GL.currentColor
+  --           bgC          <- get GL.clearColor
+  --           GL.currentColor  $= bgC
+  --           drawRPicture state circScale pathsPic
+  --           GL.currentColor  $= currentColor
+  --
+  --           -- | Draw the picture into the stencil.
+  --           drawRPicture state{stateStencils=paths:sp} circScale subPic
+  --
+  --           -- | Load old stencil.
+  --           loadStencil False
+  --           GL.stencilFunc  $= (GL.Equal, stencilCount, 0xFF)
+  --
+  --           -- | disable the stencil test if this is a top level stencil.
+  --           when (null sp)
+  --               (GL.stencilTest $= GL.Disabled)
 
-        RBlank  -> return ()
 
-        -- colors with float components.
-        RColor col p
-         |  stateColor state
-         ->  do
-                let
-                    RGBA r g b a  = col
-                    glCol = GL.Color4 (gf r) (gf g) (gf b) (gf a)
-                GL.currentColor  $= glCol
-                drawRPicture state{stateCurrentColor=Just glCol} circScale p
-                mapM_ (GL.currentColor $=) (stateCurrentColor state)
-
-         |  otherwise
-         ->     drawRPicture state circScale p
-
-        RPolygon path ->
-            -- drawPicture state (fromRational circScale) (Polygon $ ((map (\(V2 x y) -> (fromRational x,fromRational y)))) path)
-            -- GL.renderPrimitive GL.Polygon (vertexRPFs path)
-            mapM_ (drawRPicture state circScale . RPolygonConvex) (generalPolygonR path)
-        
-        RPolygonConvex path ->
-            GL.renderPrimitive GL.Polygon (vertexRPFs path)
-
-        RLine path ->
-            GL.renderPrimitive GL.LineStrip (vertexRPFs path)
-
-        RText str -> do
-            GL.blend        $= GL.Disabled
-            GL.preservingMatrix $ GLUT.renderString GLUT.Roman str
-            GL.blend        $= GL.Enabled
-        
-        RPictures ps ->
-            mapM_ (drawRPicture state circScale) ps
-        
-        RTransform matrix subPic -> do
-
-            let newState@State{stateModelingMatrix=netMatrixR} = multMatrix state matrix
-            netMatrixF <- toGlMatrixF netMatrixR
-
-            GL.matrix Nothing $= netMatrixF
-
-            let circMatrixScale = toRational . norm . fmap fromRational $ (matrix !* (V3 0 0 0)) - (matrix !* (V3 1 1 1))
-            drawRPicture (multMatrix state matrix) (circScale * circMatrixScale) subPic
-
-            modelingMatrixF <- toGlMatrixF modelingMatrix
-            GL.matrix Nothing $= modelingMatrixF
-
-        
-        RStencil paths subPic -> do
-
-            let
-                pathsPic = RPictures $ map RPolygon paths
-
-                loadStencil :: Bool -> IO ()
-                loadStencil load = do
-                        -- | Start editing the stencil buffer (never write into the color buffer)
-                        GL.stencilFunc  $= (GL.Always, 1, 0xFF)
-                        GL.stencilOp    $= (GL.OpKeep, GL.OpKeep, if load then GL.OpIncr else GL.OpDecr)
-                        GL.stencilMask  $= 0xFF
-                        GL.depthMask    $= GL.Disabled
-                        GL.colorMask    $= GL.Color4 GL.Disabled GL.Disabled GL.Disabled GL.Disabled
-
-                        -- | Draw the stencil path into the stencil buffer
-                        drawRPicture state circScale pathsPic
-
-                        -- | Stop editing the stencil buffer
-                        GL.stencilMask  $= 0x00
-                        GL.depthMask    $= GL.Enabled
-                        GL.colorMask    $= GL.Color4 GL.Enabled GL.Enabled GL.Enabled GL.Enabled
-
-            when (null sp)
-              (GL.stencilTest $= GL.Enabled)
-
-            let stencilCount = fromIntegral $ length sp
-
-            -- | Load the stencil
-            loadStencil True
-            GL.stencilFunc  $= (GL.Equal, stencilCount + 1, 0xFF)
-
-            -- | Clear the color buffer under the stencil.
-            currentColor <- get GL.currentColor
-            bgC          <- get GL.clearColor
-            GL.currentColor  $= bgC
-            drawRPicture state circScale pathsPic
-            GL.currentColor  $= currentColor
-
-            -- | Draw the picture into the stencil.
-            drawRPicture state{stateStencils=paths:sp} circScale subPic
-
-            -- | Load old stencil.
-            loadStencil False
-            GL.stencilFunc  $= (GL.Equal, stencilCount, 0xFF)
-
-            -- | disable the stencil test if this is a top level stencil.
-            when (null sp)
-                (GL.stencilTest $= GL.Disabled)
-
-
-drawPicture :: State -> Float -> Picture -> IO ()         
+drawPicture :: State -> Float -> Picture -> IO ()
 drawPicture (state@State{stateModelingMatrix=modelingMatrix, stateStencils=sp}) circScale picture
  = {-# SCC "drawComponent" #-}
    case picture of
@@ -176,8 +177,8 @@ drawPicture (state@State{stateModelingMatrix=modelingMatrix, stateStencils=sp}) 
          ->     return ()
 
         -- line
-        Line path       
-         -> GL.renderPrimitive GL.LineStrip 
+        Line path
+         -> GL.renderPrimitive GL.LineStrip
                 $ vertexPFs state path
 
 
@@ -186,7 +187,7 @@ drawPicture (state@State{stateModelingMatrix=modelingMatrix, stateStencils=sp}) 
          | stateWireframe state
          -> GL.renderPrimitive GL.LineLoop
                 $ vertexPFs state path
-                
+
          | otherwise
          -> GL.renderPrimitive GL.Polygon
                 $ vertexPFs state path
@@ -195,7 +196,7 @@ drawPicture (state@State{stateModelingMatrix=modelingMatrix, stateStencils=sp}) 
          | stateWireframe state
          -> GL.renderPrimitive GL.LineLoop
                 $ vertexPFs state path
-                
+
          | otherwise
          -> do
             triangulatedPaths <- generalPolygon path
@@ -204,31 +205,31 @@ drawPicture (state@State{stateModelingMatrix=modelingMatrix, stateStencils=sp}) 
         -- circle
         Circle radius
          ->  renderCircle (vertexPFs state) 0 0 circScale radius 0
-        
+
         ThickCircle radius thickness
          ->  renderCircle (vertexPFs state) 0 0 circScale radius thickness
-        
+
         -- arc
         Arc a1 a2 radius
          ->  renderArc (vertexPFs state) 0 0 circScale radius a1 a2 0
-             
+
         ThickArc a1 a2 radius thickness
          ->  renderArc (vertexPFs state) 0 0 circScale radius a1 a2 thickness
-             
+
         -- stroke text
         --      text looks weird when we've got blend on,
         --      so disable it during the renderString call.
-        Text str 
+        Text str
          -> do
                 GL.blend        $= GL.Disabled
                 GL.preservingMatrix $ GLUT.renderString GLUT.Roman str
                 GL.blend        $= GL.Enabled
-             
+
         -- Stencil -------------------------------
         Stencil paths pic
          | null paths
          -> return ()
-         
+
          | otherwise
          -> do
                 -- | If smaller than a pixel, then don't render
@@ -282,7 +283,7 @@ drawPicture (state@State{stateModelingMatrix=modelingMatrix, stateStencils=sp}) 
                         GL.currentColor  $= currentColor
 
                         -- | Draw the picture into the stencil.
-                        let pathsR = (map . map) (\(x,y) -> fmap toRational (V2 x y)) paths
+                        let pathsR = (map . map) (uncurry V2) paths
                         drawPicture state{stateStencils=pathsR:sp} circScale pic
 
                         -- | Load old stencil.
@@ -321,7 +322,7 @@ drawPicture (state@State{stateModelingMatrix=modelingMatrix, stateStencils=sp}) 
 
         -- Translate posX posY (ThickArc a1 a2 radius thickness)
         --  -> renderArc posX posY circScale radius a1 a2 thickness
-             
+
         -- Translate tx ty (Rotate deg p)
         --  -> GL.preservingMatrix
         --   $ do  GL.translate (GL.Vector3 (gf tx) (gf ty) 0)
@@ -332,9 +333,9 @@ drawPicture (state@State{stateModelingMatrix=modelingMatrix, stateStencils=sp}) 
          -- -> GL.preservingMatrix
          --  $ do  GL.translate (GL.Vector3 (gf tx) (gf ty) 0)
          --        drawPicture state circScale p
-         -> drawPicture (multMatrix state newMatrix) circScale p
+          -> drawPicture state circScale (Transform newMatrix p)
           where
-            newMatrix = (fmap.fmap) toRational $ V3
+            newMatrix = V3
               (V3 1 0 tx)
               (V3 0 1 ty)
               (V3 0 0 1)
@@ -354,14 +355,14 @@ drawPicture (state@State{stateModelingMatrix=modelingMatrix, stateStencils=sp}) 
         -- Rotate deg (ThickArc a1 a2 radius thickness)
         --  -> renderArc      0 0 circScale radius (a1-deg) (a2-deg) thickness
 
-        
+
         Rotate deg p
-         -> drawPicture (multMatrix state newMatrix) circScale p
+         -> drawPicture state circScale (Transform newMatrix p)
           where
             ccwRad = negate (deg * pi / 180)
             s = sin ccwRad
             c = cos ccwRad
-            newMatrix = (fmap.fmap) toRational $ V3
+            newMatrix = V3
               (V3 c (-s) 0)
               (V3 s   c  0)
               (V3 0   0  1)
@@ -369,22 +370,33 @@ drawPicture (state@State{stateModelingMatrix=modelingMatrix, stateStencils=sp}) 
 
         -- Scale --------------------------------
         Scale sx sy p
-         -> drawPicture (multMatrix state newMatrix) circScale p
+         -> drawPicture state circScale (Transform newMatrix p)
           where
-            newMatrix = (fmap.fmap) toRational $ V3
+            newMatrix = V3
               (V3 sx  0  0)
               (V3 0  sy  0)
               (V3 0   0  1)
 
         -- Transform --------------------------------
-        Transform newMatrixF p
-         -> drawPicture (multMatrix state newMatrix) circScale p
-          where
-            newMatrix = (fmap.fmap) toRational $ newMatrixF
+        -- Transform newMatrix p
+        --  -> drawPicture (multMatrix state newMatrix) circScale p
+
+        Transform matrix subPic -> do
+            -- TODO memory management for the matrixes
+             let newState@State{stateModelingMatrix=netMatrix} = multMatrix state matrix
+             netMatrixGlF <- toGlMatrixF netMatrix
+
+             GL.matrix Nothing $= netMatrixGlF
+
+             let circMatrixScale = norm $ (matrix !* (V3 0 0 0)) - (matrix !* (V3 1 1 1))
+             drawPicture newState (circScale * circMatrixScale) subPic
+
+             modelingMatrixF <- toGlMatrixF modelingMatrix
+             GL.matrix Nothing $= modelingMatrixF
 
         -- Bitmap -------------------------------
         Bitmap width height imgData cacheMe
-         -> do  
+         -> do
                 let rowInfo =
                       case rowOrder (bitmapFormat imgData) of
                          BottomToTop -> [(0,0), (1,0), (1,1), (0,1)]
@@ -393,23 +405,23 @@ drawPicture (state@State{stateModelingMatrix=modelingMatrix, stateStencils=sp}) 
                 -- Load the image data into a texture,
                 -- or grab it from the cache if we've already done that before.
                 tex     <- loadTexture (stateTextures state) width height imgData cacheMe
-         
+
                 -- Set up wrap and filtering mode
                 GL.textureWrapMode GL.Texture2D GL.S $= (GL.Repeated, GL.Repeat)
                 GL.textureWrapMode GL.Texture2D GL.T $= (GL.Repeated, GL.Repeat)
                 GL.textureFilter   GL.Texture2D      $= ((GL.Nearest, Nothing), GL.Nearest)
-                
+
                 -- Enable texturing
                 GL.texture GL.Texture2D $= GL.Enabled
                 GL.textureFunction      $= GL.Combine
-                
+
                 -- Set current texture
                 GL.textureBinding GL.Texture2D $= Just (texObject tex)
-                
+
                 -- Set to opaque
                 oldColor <- get GL.currentColor
                 GL.currentColor $= GL.Color4 1.0 1.0 1.0 1.0
-                
+
                 -- Draw textured polygon
                 GL.renderPrimitive GL.Polygon
                  $ zipWithM_
@@ -428,11 +440,11 @@ drawPicture (state@State{stateModelingMatrix=modelingMatrix, stateStencils=sp}) 
 
                 -- Free uncachable texture objects.
                 freeTexture tex
-                
+
 
         Pictures ps
          -> mapM_ (drawPicture state circScale) ps
-        
+
 
 
 -- Errors ---------------------------------------------------------------------
@@ -446,7 +458,7 @@ handleError :: String -> GLU.Error -> IO ()
 handleError place err
  = case err of
     GLU.Error GLU.StackOverflow _
-     -> error $ unlines 
+     -> error $ unlines
       [ "Gloss / OpenGL Stack Overflow " ++ show place
       , "  This program uses the Gloss vector graphics library, which tried to"
       , "  draw a picture using more nested transforms (Translate/Rotate/Scale)"
@@ -462,13 +474,13 @@ handleError place err
       , "  transforms used when defining the Picture given to Gloss. Sorry." ]
 
     -- Issue #32: Spurious "Invalid Operation" errors under Windows 7 64-bit.
-    --   When using GLUT under Windows 7 it complains about InvalidOperation, 
-    --   but doesn't provide any other details. All the examples look ok, so 
+    --   When using GLUT under Windows 7 it complains about InvalidOperation,
+    --   but doesn't provide any other details. All the examples look ok, so
     --   we're just ignoring the error for now.
     GLU.Error GLU.InvalidOperation _
      -> return ()
-    _ 
-     -> error $ unlines 
+    _
+     -> error $ unlines
      [  "Gloss / OpenGL Internal Error " ++ show place
      ,  "  Please report this on haskell-gloss@googlegroups.com."
      ,  show err ]
@@ -489,16 +501,16 @@ loadTexture refTextures width height imgData cacheMe
 
         -- Try and find this same texture in the cache.
         name            <- makeStableName imgData
-        let mTexCached      
+        let mTexCached
                 = find (\tex -> texName   tex == name
                              && texWidth  tex == width
                              && texHeight tex == height)
                 textures
-                
+
         case mTexCached of
          Just tex
           ->    return tex
-                
+
          Nothing
           -> do tex     <- installTexture width height imgData cacheMe
                 when cacheMe
@@ -507,14 +519,14 @@ loadTexture refTextures width height imgData cacheMe
 
 
 -- | Install a texture into OpenGL.
-installTexture     
+installTexture
         :: Int -> Int
         -> BitmapData
         -> Bool
         -> IO Texture
 
 installTexture width height bitmapData@(BitmapData _ fmt fptr) cacheMe
- = do   
+ = do
         let glFormat = case pixelFormat fmt of
                            PxABGR -> GL.RGBA
                            PxRGBA -> GL.ABGR
@@ -523,7 +535,7 @@ installTexture width height bitmapData@(BitmapData _ fmt fptr) cacheMe
         GL.textureBinding GL.Texture2D $= Just tex
 
         -- Sets the texture in imgData as the current texture
-        -- This copies the data from the pointer into OpenGL texture memory, 
+        -- This copies the data from the pointer into OpenGL texture memory,
         -- so it's ok if the foreignptr gets garbage collected after this.
         withForeignPtr fptr
          $ \ptr ->
@@ -552,7 +564,7 @@ installTexture width height bitmapData@(BitmapData _ fmt fptr) cacheMe
                 , texCacheMe    = cacheMe }
 
 
--- | If this texture does not have its `cacheMe` flag set then delete it from 
+-- | If this texture does not have its `cacheMe` flag set then delete it from
 --   OpenGL and free the GPU memory.
 freeTexture :: Texture -> IO ()
 freeTexture tex
@@ -565,13 +577,13 @@ freeTexture tex
 -- | Turn alpha blending on or off
 setBlendAlpha :: Bool -> IO ()
 setBlendAlpha state
-        | state 
+        | state
         = do    GL.blend        $= GL.Enabled
                 GL.blendFunc    $= (GL.SrcAlpha, GL.OneMinusSrcAlpha)
 
         | otherwise
         = do    GL.blend        $= GL.Disabled
-                GL.blendFunc    $= (GL.One, GL.Zero)    
+                GL.blendFunc    $= (GL.One, GL.Zero)
 
 -- | Turn line smoothing on or off
 setLineSmooth :: Bool -> IO ()
@@ -582,10 +594,7 @@ setLineSmooth state
 
 vertexPFs :: State -> [(Float, Float)] -> IO ()
 vertexPFs _ [] = return ()
-vertexPFs State{stateModelingMatrix=mR} ps
-    = mapM_ (\(V3 x y w) -> GL.vertex $ GL.Vertex2 (gf (x / w)) (gf (y / w))) (map (\(x, y) -> m !* (V3 x y 1)) ps)
-    where
-        m = (fmap . fmap) fromRational mR
+vertexPFs _ ps = mapM_ (GL.vertex . (\(x,y) -> GL.Vertex2 (gf x) (gf y))) ps
 {-# INLINE vertexPFs #-}
 
 

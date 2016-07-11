@@ -32,17 +32,17 @@ data State
 
         -- | Whether to use line smoothing
         , stateLineSmooth       :: !Bool
-        
+
         -- | Cache of Textures that we've sent to OpenGL.
         , stateTextures         :: !(IORef [Texture])
 
         -- | Active modeling matrix
-        , stateModelingMatrix   :: M33 RType
+        , stateModelingMatrix   :: M33 Float
 
         -- | Current stencil in current modeling space.
-        , stateStencils :: [[RPath]]
+        , stateStencils :: [[[V2 Float]]]
         }
-        
+
 
 -- | A texture that we've sent to OpenGL.
 data Texture
@@ -58,7 +58,7 @@ data Texture
 
         -- | Pointer to the Raw texture data.
         , texData       :: ForeignPtr Word8
-        
+
         -- | The OpenGL texture object.
         , texObject     :: GL.TextureObject
 
@@ -67,7 +67,7 @@ data Texture
 
          }
 
-multMatrix :: State -> M33 RType -> State
+multMatrix :: State -> M33 Float -> State
 multMatrix state@State{stateModelingMatrix=mm,stateStencils=sp} newMatrix = state{
         stateModelingMatrix = mm !*! newMatrix,
         stateStencils     = (map . map) (map $ toV2 . (toNewSpace !*) . toV3) sp
@@ -76,7 +76,7 @@ multMatrix state@State{stateModelingMatrix=mm,stateStencils=sp} newMatrix = stat
         toV2 (V3 x y w) = V2 (x/w) (y/w)
         toV3 (V2 x y) = V3 x y 1
 
-        toNewSpace :: M33 RType
+        toNewSpace :: M33 Float
         toNewSpace = inv33 newMatrix
 
 -- | A mutable render state holds references to the textures currently loaded
@@ -90,8 +90,7 @@ initState
                 , stateCurrentColor     = Just (GL.Color4 0 0 0 1)
                 , stateWireframe        = False
                 , stateBlendAlpha       = True
-                , stateLineSmooth       = False 
+                , stateLineSmooth       = False
                 , stateTextures         = textures
                 , stateModelingMatrix   = identity
                 , stateStencils         = [] }
-        
